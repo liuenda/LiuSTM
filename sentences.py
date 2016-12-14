@@ -5,11 +5,12 @@ import random
 # from nltk.corpus import stopwords
 from gensim.models import word2vec
 
-print "Loading Word2Vec"
-data_path = "./data/"
-# d2 = pickle.load(open(data_path + "synsem.p",'rb'))
-dtr = pickle.load(open(data_path + "dwords.p", 'rb'))
+# print "Loading Word2Vec"
 
+# d2 = pickle.load(open(data_path + "synsem.p",'rb'))
+# dtr = pickle.load(open(data_path + "dwords.p", 'rb'))
+
+data_path = "./data/"
 maxlen = 100
 
 # model = word2vec.Word2Vec.load_word2vec_format(data_path + "GoogleNews-vectors-negative300.bin.gz",binary = True)
@@ -61,24 +62,27 @@ def prepare_data(data):
     return emb1, mas1, emb2, mas2, y2
 
 
+# # Not in use anymore
+# def embed_old(stmx):
+#     #stmx=stmx.split()
+#     dmtr = numpy.zeros((stmx.shape[0], 300), dtype = np.float32)
+#     count = 0
+#     while(count < len(stmx)):
+#         if stmx[count] == ',':
+#             count += 1
+#             continue
+#         if stmx[count] in dtr:
+#             dmtr[count] = model[dtr[stmx[count]]]
+#             count += 1
+#         else:
+#             dmtr[count] = model[stmx[count]]
+#             count += 1
+#     return dmtr
+
+
 # This is called lstm.py
 #new embed
-def embed_old(stmx):
-    #stmx=stmx.split()
-    dmtr = numpy.zeros((stmx.shape[0], 300), dtype = np.float32)
-    count = 0
-    while(count < len(stmx)):
-        if stmx[count] == ',':
-            count += 1
-            continue
-        if stmx[count] in dtr:
-            dmtr[count] = model[dtr[stmx[count]]]
-            count += 1
-        else:
-            dmtr[count] = model[stmx[count]]
-            count += 1
-    return dmtr
-
+# For instance, for input 8 --> [0,0,0,0,0,0,0,1,0,0]
 def embed(stmx, k=10):
     dmtr = numpy.zeros((stmx.shape[0], k), dtype = np.float32)
     count = 0

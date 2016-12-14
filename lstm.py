@@ -10,7 +10,8 @@ import theano.tensor as T
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 # from sentences import *
-from random import sample
+# from random import sample
+import random
 from sentences import prepare_data as prepare_data
 from sentences import embed as embed
 import pandas as pd
@@ -20,6 +21,41 @@ data_path = "./data/"
 # test = pickle.load(open(data_path + "semtest.p",'rb')) # add by liuenda
 
 options = locals().copy()
+
+random.seed(1234)
+np.random.seed(1234)
+
+# Called by find_ranking
+# Given 2 list of projection results, calculate there L1-norm similarity
+def cal_similarity(a, b):
+    diff = np.linalg.norm(a - b, 1, axis=1)
+    sim = np.exp(-diff)
+    # len(diff)
+    return sim
+
+# Find the ranking results with respect to real pairs
+def find_ranking(projection1, projection2):
+    sim_results = []
+    rank_results = []
+
+    # Iterate each of the ariticle from projection1 (999) as proj1
+    # Calculate the simialrity of proj1 with all ariticles in projection2 (999)
+    for i, proj1 in enumerate(projection1):
+        sim = cal_similarity(proj1, projection2)
+        rank = pd.Series(sim).rank(ascending = False)[i]
+        sim_results.append(sim)
+        rank_results.append(rank)
+
+    # sim_results contains 999*999 similairty matrix
+    return sim_results, rank_results
+
+# rank_results should be list of (999,)
+def find_top(rank_results, top):
+    s = pd.Series(rank_results)
+    n_top = (s <= top).sum()
+    return n_top
+
+# ---------------------------------------------
 
 # Make a new name
 # combine pp and name to "pp_name"
@@ -383,30 +419,37 @@ class LSTM():
         print "Training"
         print "the length of the training data is ", len(train)
 
-        test = train
+        # test = train
+
 
         lrate = 0.0001 # Learning rate, but Not USED ???
         freq = 0 # ???
         batchsize = 32
         dfreq = 40 #display frequency
 
+        self.rank = []
+        self.top = []
+
+        print "Before trianing, the error is:"
+        print self.chkterr2(train) # MSE check
+        rank_results_train, n_top = self.evaluate2(correct, top=5) # Similairty check
+        print "top:", self.top, ":", n_top
+        print pd.Series(rank_results_train).describe()
+
         # eidx -> index of epoch
         for eidx in xrange(0, max_epochs):
             sta = time.time()
-            print self.chkterr2(test) # Add by Enda
-            # print self.evaluate(correct)
+            print ""
+            print 'Epoch', eidx, '...'
 
             num = len(train) # length of training data
-            # nd = eidx
-            print 'Epoch', eidx
-            # rnd = sample(xrange(len(train)), len(train))
             
             #---------------------Shuffle the data------------------------------#
             # 为何不直接用shuffle函数？
             # generates a list with length of num from the population xrange(num)
             # Used for shuffling the training data each time for each epoches
             # [5,2,6,.11,...] length -> len(train) 
-            rnd = sample(xrange(num), num) 
+            rnd = random.sample(xrange(num), num) 
             
             # i would be (0,32,64,...)
             # Iterate all batches
@@ -443,8 +486,17 @@ class LSTM():
                 cst = self.f_grad_shared(emb2, mas2, emb1, mas1, y2)
                 s = self.f_update(lrate) # Not USED ???
 
-                if np.mod(freq,dfreq) == 0:
+                if np.mod(freq, dfreq) == 0:
                     print 'Epoch ', eidx, 'Update ', freq, 'Cost ', cst
+
+            # Evalution 
+            print self.chkterr2(train) # MSE check
+            rank_results_train, n_top = self.evaluate2(correct, top=5) # Similairty check
+            self.rank.append(rank_results_train)
+            self.top.append(n_top)
+            print "top:", self.top, ":", n_top
+            print pd.Series(rank_results_train).describe()
+
             sto = time.time()
             print "epoch took:",sto - sta
 
@@ -526,8 +578,13 @@ class LSTM():
 
         for i in range(0, n_samples):
             
-            # BUG：问题出在ref_mas上
-            # NOTE that mas1 and mas2 are verticle matrix, not normal one!
+            # NOTE: mas1 and mas2 are verticle matrix, not a normal one!
+            # ref_ls refers to n_samples(999,EN) of duplicated ls[i]
+            # So we can compare the ls[i](EN) with other sentences(999,JP)
+            # to derive the ranking results for this given article ls[i](EN)
+            # 用一个英语文章比较所有可能为pairs的日语文章（如999篇）求出ranking
+            # ref_ls 就是一个重复了999（n_samples）次的文章ls[i]
+            # 而 ls2 就是可能为paris的999篇日语的文章
             ref_ls = [ls[i]] * n_samples
             # print "ref_embed", ref_embed
             ref_mas1 = np.array([mas1[:,i],] * n_samples).T
@@ -545,9 +602,108 @@ class LSTM():
             print "the round", i, "rank:", rank
 
         return rank_results
+    
+    # project a list of article (cluster numbers) to 50 dim vectors      
+    def seq2vec(self, data):
+        # list saving the projection results (50 dim):
+
+        x1, mas1, x2, mas2, y2 = prepare_data(data)
+        # print "Finish preparing the data!"
+        use_noise.set_value(0.)
+
+        n_samples = len(data)
+
+        ls = []   # Embedding results of xa
+        ls2 = []  # Embedding results of xb
+        for j in range(0, n_samples):
+            ls.append(embed(x1[j]))
+            ls2.append(embed(x2[j]))
+
+        # print "Finished embedding,start projecting..."
+
+        # start_time = time.time()
+        # for i in range(0, n_samples):
+
+        # print "conducting the", i, "projection"
+        # loop_time = time.time()
+
+        trconv = np.dstack(ls)
+        trconv2 = np.dstack(ls2)
+        
+        emb1 = np.swapaxes(trconv, 1, 2)
+        emb2 = np.swapaxes(trconv2, 1, 2)
+
+        # list saving the projection results (50 dim):
+        list_projection1 = self.f_proj11(emb1, mas1)
+        list_projection2 = self.f_proj11(emb2, mas2)
+
+        # After projection, compare the distance for possible pairs
+        # ## SKIP
+
+
+
+        return list_projection1, list_projection2
+
+    def evaluate2(self, data, top=5):
+        projection1_train, projection2_train = self.seq2vec(data)
+        # projection1_test, projection2_test = sls.seq2vec(test_1)
+
+        # Calculate the rankings for this data set
+        sim_results_train, rank_results_train = find_ranking(projection1_train, projection2_train)
+
+        # Calculate the top1, top5 and top10 information
+        n_top = find_top(rank_results_train, top)
+
+
+        return rank_results_train, n_top
+
+
+
+
+    # def evaluate3(self, data):
+
+    #     x1, mas1, x2, mas2, y2 = prepare_data(data)
+    #     use_noise.set_value(0.)
+
+    #     n_samples = len(data)
+
+    #     ls = []   # Embedding results of xa
+    #     ls2 = []  # Embedding results of xb
+    #     for j in range(0, n_samples):
+    #         ls.append(embed(x1[j]))
+    #         ls2.append(embed(x2[j]))
+
+    #     # rank_results = []
+
+    #     # New testing list
+    #     lss = []
+    #     lss2 = []
+    #     mass1 = []
+    #     mass2 = [] 
+
+    #     for m in range(0, n_samples):
             
+    #         for i in range(0, n_samples):
+    #             # print type(ls[i])
+    #             lss.append(ls[m])
+                
+    #         lss2 += ls2
 
 
+    #     print len(lss), len(lss2)
+
+    #     print "Finish data extension"
+
+    #     trconv = np.dstack(lss)
+    #     trconv2 = np.dstack(lss2)
+        
+    #     emb1 = np.swapaxes(trconv, 1, 2)
+    #     emb2 = np.swapaxes(trconv2, 1, 2)
+
+    #     print "start predicting..."
+    #     pred = self.f2sim(emb1, ref_mas1, emb2, mas2)
+
+    #     return pred, lss, lss2
 
 
 

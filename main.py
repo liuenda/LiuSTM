@@ -6,6 +6,7 @@ import time
 from ast import literal_eval
 import lstm
 import random
+import pickle
 
 # TODO1: 文件输入en，jp的txt文件的时候，需要检查1. 是否行数一直 2. 是否有\n\n的问题出现
 # 目前是手动删除对应的\n\n行[已完成]
@@ -217,6 +218,25 @@ def prepare_trainig(dir_en, dir_jp):
 
 	return train_1, train_2, df_train_1
 
+# # Called by find_ranking
+# # Given 2 list of projection results, calculate there L1-norm similarity
+# def cal_similarity(a, b):
+# 	diff = np.linalg.norm(a - b, 1, axis=1)
+# 	sim = np.exp(-diff)
+# 	# len(diff)
+# 	return sim
+
+# # Find the ranking results with respect to real pairs
+# def find_ranking(projection1, projection2):
+# 	sim_results = []
+# 	rank_results = []
+# 	for i, proj1 in enumerate(projection1):
+# 		sim = cal_similarity(proj1, projection2)
+# 		rank = pd.Series(sim).rank(ascending = False)[i]
+# 		sim_results.append(sim)
+# 		rank_results.append(rank)
+# 	return sim_results, rank_results
+
 
 
 #-----------------------------Loading-------------------------
@@ -251,46 +271,106 @@ if False:
 
 # -----------------Formatting the data------------------------
 
-# Prepare For the training data
-dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
-dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
-train_1, train_2, df_train_1 = prepare_trainig(dir_en, dir_jp)
+if False:
+	# Prepare For the training data
+	dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
+	dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
+	train_1, train_2, df_train_1 = prepare_trainig(dir_en, dir_jp)
 
-# Prepare For the testing data
-sample_size = "_1k2k"
-dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
-dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
-test_1, test_2, df_test_1 = prepare_trainig(dir_en, dir_jp)
+	# Prepare For the testing data
+	sample_size = "_1k2k"
+	dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
+	dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
+	test_1, test_2, df_test_1 = prepare_trainig(dir_en, dir_jp)
+
+	# ----save the prepared data into pickle-----------------------
+	root_dir = "pickles/"
+	with open(root_dir + "train_1.p", 'wb') as handle:
+	    pickle.dump(train_1, handle)
+	with open(root_dir + "train_2.p", 'wb') as handle:
+	    pickle.dump(train_2, handle)
+	with open(root_dir + "test_1.p", 'wb') as handle:
+	    pickle.dump(test_1, handle)
+	with open(root_dir + "test_2.p", 'wb') as handle:
+	    pickle.dump(test_2, handle)
+	with open(root_dir + "df_train_1.p", 'wb') as handle:
+	    pickle.dump(df_train_1, handle)
+	with open(root_dir + "df_test_1.p", 'wb') as handle:
+	    pickle.dump(df_test_1, handle)
+
+else:
+	root_dir = "pickles/"
+	# ------load the exited prepared data from pickle---------------
+	train_1 = pickle.load(open(root_dir + "train_1.p",'rb'))
+	train_2 = pickle.load(open(root_dir + "train_2.p",'rb'))
+	test_1 = pickle.load(open(root_dir + "test_1.p",'rb'))
+	test_2 = pickle.load(open(root_dir + "test_2.p",'rb'))
+	df_train_1 = pickle.load(open(root_dir + "df_train_1.p",'rb'))
+	df_test_1 = pickle.load(open(root_dir + "df_test_1.p",'rb'))
+
+
+
 
 #-----------------------Load/Train the LSTM model---------------
 
 train = train_1 + train_2
 
+# True to training the data, False to laod the existed data
 if True:
-	dir_file = "201611232246.p"
-	print "Starting to training the modle..., saving to", dir_file
+	dir_file = "weights/201612140109_e10_1k1k.p"
+	print "Starting to training the model..., saving to", dir_file
 	sls=lstm.LSTM(dir_file, load=False, training=True)
-	sls.train_lstm(train, 10, train_1)
+	sls.train_lstm(train, 20, train_1)
 	sls.save_model()
 else:
-	dir_file = "201611232246.p"
-	print "NO Train. Load the existed model:", dir_file
+	dir_file = "weights/201612140109_e10_1k1k.p"
+	print "NO Training. Load the existed model:", dir_file
 	sls=lstm.LSTM(dir_file, load=True, training=False)
 
+#---- Deprecated-----------!!!!!---------------------------------
 #----------------------Evaluate the LSTM model-------------------
 
-# Evaluate in terms of training data
-if True:
-	print "Evaluate in terms of training data..."
-	rank_results_tr = sls.evaluate(train_1)
-	score_tr = sum(rank_results_tr)/len(rank_results_tr)
-	print "score of training data:", score_tr
-	print pd.Series(rank_results_tr).describe()
+# # Evaluate in terms of training data
+# if False:
+# 	print "Evaluate in terms of training data..."
+# 	rank_results_tr = sls.evaluate(train_1)
+# 	score_tr = sum(rank_results_tr)/len(rank_results_tr)
+# 	print "score of training data:", score_tr
+# 	print pd.Series(rank_results_tr).describe()
 
-# Evalutate in terms of testing data
+# # Evalutate in terms of testing data
+# if False:
+# 	print "Evalutate in terms of testing data..."
+# 	rank_results_te = sls.evaluate(test_1)
+# 	score_te = sum(rank_results_te)/len(rank_results_te)
+# 	print "socre of testing data:", score_te
+# 	print pd.Series(rank_results_te).describe()
+
+#--- New method to evaluate the results ------------------------
+#--------------------Evaluate the results using new method------
 if True:
-	print "Evalutate in terms of testing data..."
-	rank_results_te = sls.evaluate(test_1)
-	score_te = sum(rank_results_te)/len(rank_results_te)
-	print "socre of testing data:", score_te
-	print pd.Series(rank_results_te).describe()
+	print "Evaluate the model using fast estimation..."
+	projection1_train, projection2_train = sls.seq2vec(train_1)
+	projection1_test, projection2_test = sls.seq2vec(test_1)
+
+	sim_results_train, rank_results_train = lstm.find_ranking(projection1_train, projection2_train)
+	sim_results_test, rank_results_test = lstm.find_ranking(projection1_test, projection2_test)
+
+	print pd.Series(rank_results_train).describe()
+	print pd.Series(rank_results_test).describe()
+
+	# root_dir = "pickles/"
+	# with open(root_dir + "rank_results_train_20161214.py", 'wb') as handle:
+	#     pickle.dump(train_1, handle)
+	# with open(root_dir + "train_1.p", 'wb') as handle:
+	#     pickle.dump(train_1, handle)
+
+
+
+
+
+# if False:
+# 	print "Evaluate the model using fast estimation..."
+# 	a, b, c = sls.evaluate3(train_1)
+# 	# projection1_test, projection2_test = sls.evaluate3(test_1)
+

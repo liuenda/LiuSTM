@@ -428,12 +428,21 @@ class LSTM():
         dfreq = 40 #display frequency
 
         self.rank = []
-        self.top = []
+        self.tops = {}
+
+        self.top_keys = [1, 5, 10]
 
         print "Before trianing, the error is:"
         print self.chkterr2(train) # MSE check
-        rank_results_train, n_top = self.evaluate2(correct, top=5) # Similairty check
-        print "top:", self.top, ":", n_top
+        
+        # Saving the ranking and top1,5,10 information
+        rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
+        # print "[debug]", n_tops
+        for top_key in self.top_keys:
+            # print "[debug]", n_tops[top_key]
+            self.tops[top_key] = []
+            print "top-",top_key, "=", self.tops[top_key], ":", n_tops[top_key]
+
         print pd.Series(rank_results_train).describe()
 
         # eidx -> index of epoch
@@ -491,10 +500,14 @@ class LSTM():
 
             # Evalution 
             print self.chkterr2(train) # MSE check
-            rank_results_train, n_top = self.evaluate2(correct, top=5) # Similairty check
+            rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
             self.rank.append(rank_results_train)
-            self.top.append(n_top)
-            print "top:", self.top, ":", n_top
+            
+            # Saving the ranking and top1,5,10 information
+            for top_key in self.top_keys:
+                self.tops[top_key].append(n_tops[top_key])
+                print "top-",top_key, "=", self.tops[top_key], ":", n_tops[top_key]
+
             print pd.Series(rank_results_train).describe()
 
             sto = time.time()
@@ -644,7 +657,8 @@ class LSTM():
 
         return list_projection1, list_projection2
 
-    def evaluate2(self, data, top=5):
+    # Example: tops = [1, 5, 10] 
+    def evaluate2(self, data, tops):
         projection1_train, projection2_train = self.seq2vec(data)
         # projection1_test, projection2_test = sls.seq2vec(test_1)
 
@@ -652,76 +666,10 @@ class LSTM():
         sim_results_train, rank_results_train = find_ranking(projection1_train, projection2_train)
 
         # Calculate the top1, top5 and top10 information
-        n_top = find_top(rank_results_train, top)
+        n_tops = {}
+        for top in tops:
+            n_tops[top] = find_top(rank_results_train, top)
 
-
-        return rank_results_train, n_top
-
-
-
-
-    # def evaluate3(self, data):
-
-    #     x1, mas1, x2, mas2, y2 = prepare_data(data)
-    #     use_noise.set_value(0.)
-
-    #     n_samples = len(data)
-
-    #     ls = []   # Embedding results of xa
-    #     ls2 = []  # Embedding results of xb
-    #     for j in range(0, n_samples):
-    #         ls.append(embed(x1[j]))
-    #         ls2.append(embed(x2[j]))
-
-    #     # rank_results = []
-
-    #     # New testing list
-    #     lss = []
-    #     lss2 = []
-    #     mass1 = []
-    #     mass2 = [] 
-
-    #     for m in range(0, n_samples):
-            
-    #         for i in range(0, n_samples):
-    #             # print type(ls[i])
-    #             lss.append(ls[m])
-                
-    #         lss2 += ls2
-
-
-    #     print len(lss), len(lss2)
-
-    #     print "Finish data extension"
-
-    #     trconv = np.dstack(lss)
-    #     trconv2 = np.dstack(lss2)
-        
-    #     emb1 = np.swapaxes(trconv, 1, 2)
-    #     emb2 = np.swapaxes(trconv2, 1, 2)
-
-    #     print "start predicting..."
-    #     pred = self.f2sim(emb1, ref_mas1, emb2, mas2)
-
-    #     return pred, lss, lss2
-
-
-
-
-
-
-# d2=pickle.load(open(data_path + "synsem.p",'rb'))
-# dtr=pickle.load(open(data_path + "dwords.p",'rb'))
-#d2=dtr
-#model=pickle.load(open("Semevalembed.p","rb"))
-
-# prefix='lstm'
-# noise_std=0.
-
-# flg=1
-# cachedStopWords=stopwords.words("english")
-# training=False #Loads best saved model if False
-# Syn_aug=True # If true, performs better on Test dataset but longer training time
-
+        return rank_results_train, n_tops
 
 

@@ -28,3 +28,10 @@ Containing preprocessed training data and testing data
 Containing the trained model for MaLSTM
 e5/e10 refers to the epoches times
 1k1k refers to the number of "relative" training pairs (similairty =1) 1k and "unrelavant" training pairs 1k (similairty = 0)
+
+Ignored files:
+./log
+Log histories
+
+./data
+Dataset and results for multilingual bi-graph clustering system (see my other paper published soon)

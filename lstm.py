@@ -415,7 +415,7 @@ class LSTM():
             self.f_grad_shared, self.f_update = adadelta(lr, self.tnewp, grads, emb11, mask11, emb21, mask21, y, cost)
     
     
-    def train_lstm(self, train, max_epochs, correct):
+    def train_lstm(self, train, max_epochs, correct, test_correct):
         print "Training"
         print "the length of the training data is ", len(train)
 
@@ -430,20 +430,33 @@ class LSTM():
         self.rank = []
         self.tops = {}
 
+        self.rank_test = []
+        self.tops_test = {}
+
         self.top_keys = [1, 5, 10]
 
         print "Before trianing, the error is:"
         print self.chkterr2(train) # MSE check
         
-        # Saving the ranking and top1,5,10 information
+        # Saving (Initialization) the ranking and top1,5,10 information (Trianing data)
         rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
         # print "[debug]", n_tops
         for top_key in self.top_keys:
             # print "[debug]", n_tops[top_key]
             self.tops[top_key] = []
             print "top-",top_key, "=", self.tops[top_key], ":", n_tops[top_key]
-
+        print "Discription of evaluation (ranking) for training data:"
         print pd.Series(rank_results_train).describe()
+
+        # Saving (Initialization) the ranking and top1,5,10 information (Testing data)
+        rank_results_test, n_tops_test = self.evaluate2(test_correct, tops=self.top_keys) # Similairty check
+        # print "[debug]", n_tops
+        for top_key in self.top_keys:
+            # print "[debug]", n_tops[top_key]
+            self.tops_test[top_key] = []
+            print "top-",top_key, "=", self.tops_test[top_key], ":", n_tops_test[top_key]
+        print "Discription of evaluation (ranking) for testing data:"
+        print pd.Series(rank_results_test).describe()
 
         # eidx -> index of epoch
         for eidx in xrange(0, max_epochs):
@@ -500,15 +513,24 @@ class LSTM():
 
             # Evalution 
             print self.chkterr2(train) # MSE check
+          
+            # Saving the ranking and top1,5,10 information
             rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
             self.rank.append(rank_results_train)
-            
-            # Saving the ranking and top1,5,10 information
             for top_key in self.top_keys:
                 self.tops[top_key].append(n_tops[top_key])
                 print "top-",top_key, "=", self.tops[top_key], ":", n_tops[top_key]
-
+            print "Discription of evaluation (ranking) for training data:"
             print pd.Series(rank_results_train).describe()
+            
+            # Saving the ranking and top1,5,10 information
+            rank_results_test, n_tops_test = self.evaluate2(test_correct, tops=self.top_keys) # Similairty check
+            self.rank_test.append(rank_results_test)
+            for top_key in self.top_keys:
+                self.tops_test[top_key].append(n_tops_test[top_key])
+                print "top-",top_key, "=", self.tops_test[top_key], ":", n_tops_test[top_key]
+            print "Discription of evaluation (ranking) for testing data:"
+            print pd.Series(rank_results_test).describe()
 
             sto = time.time()
             print "epoch took:",sto - sta

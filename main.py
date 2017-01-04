@@ -305,7 +305,7 @@ if __name__ == "__main__":
 		train_1 = pickle.load(open(root_dir + "train_1.p",'rb'))
 		train_2 = pickle.load(open(root_dir + "train_2.p",'rb'))
 		test_1 = pickle.load(open(root_dir + "test_1.p",'rb'))
-		test_2 = pickle.load(open(root_dir + "test_2.p",'rb'))
+		# test_2 = pickle.load(open(root_dir + "test_2.p",'rb')) 
 		df_train_1 = pickle.load(open(root_dir + "df_train_1.p",'rb'))
 		df_test_1 = pickle.load(open(root_dir + "df_test_1.p",'rb'))
 
@@ -321,7 +321,7 @@ if __name__ == "__main__":
 		dir_file = "weights/201612140109_e10_1k1k.p"
 		print "Starting to training the model..., saving to", dir_file
 		sls=lstm.LSTM(dir_file, load=False, training=True)
-		sls.train_lstm(train, 20, train_1)
+		sls.train_lstm(train, 20, train_1, test_1)
 		sls.save_model()
 	else:
 		dir_file = "weights/201612140109_e10_1k1k.p"

@@ -425,18 +425,33 @@ class LSTM():
         lrate = 0.0001 # Learning rate, but Not USED ???
         freq = 0 # ???
         batchsize = 32
-        dfreq = 40 #display frequency
+        dfreq = 21 #display frequency
 
+        self.mse = [] # MSE of train1 + train2
         self.rank = []
         self.tops = {}
 
+        self.mse_test = [] # MSE of test1
+        self.mse_train = [] # MSE of train1
         self.rank_test = []
         self.tops_test = {}
 
         self.top_keys = [1, 5, 10]
 
         print "Before trianing, the error is:"
-        print self.chkterr2(train) # MSE check
+        # print self.chkterr2(train) # MSE check
+        cst_all = self.chkterr2(train)[0]/16
+        self.mse.append(cst_all)
+        cst_test = self.chkterr2(test_correct)[0]/16
+        self.mse_test.append(cst_test)
+        cst_train = self.chkterr2(correct)[0]/16
+        self.mse_train.append(cst_train)
+        # 【注意】内存不足时使用chkterr2但是会慢，内存足够时使用 , self.get_mse(train)
+        # 【注意】不要直接使用cst变量作为cost，因为这里的cst是最后一个batch的cost而已，不是全部的
+        print "Training error:", cst_all #, "==", self.get_mse(train)
+        print "Training_correct error", cst_train
+        print "Testing_correct error:", cst_test
+
         
         # Saving (Initialization) the ranking and top1,5,10 information (Trianing data)
         rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
@@ -444,6 +459,7 @@ class LSTM():
         for top_key in self.top_keys:
             # print "[debug]", n_tops[top_key]
             self.tops[top_key] = []
+            self.tops[top_key].append(n_tops[top_key])
             print "top-",top_key, "=", self.tops[top_key], ":", n_tops[top_key]
         print "Discription of evaluation (ranking) for training data:"
         print pd.Series(rank_results_train).describe()
@@ -454,6 +470,7 @@ class LSTM():
         for top_key in self.top_keys:
             # print "[debug]", n_tops[top_key]
             self.tops_test[top_key] = []
+            self.tops_test[top_key].append(n_tops_test[top_key])
             print "top-",top_key, "=", self.tops_test[top_key], ":", n_tops_test[top_key]
         print "Discription of evaluation (ranking) for testing data:"
         print pd.Series(rank_results_test).describe()
@@ -510,9 +527,23 @@ class LSTM():
 
                 if np.mod(freq, dfreq) == 0:
                     print 'Epoch ', eidx, 'Update ', freq, 'Cost ', cst
+                # print 'Epoch ', eidx, 'Update ', freq, 'Cost ', cst
 
             # Evalution 
-            print self.chkterr2(train) # MSE check
+            # print self.chkterr2(train) # MSE check
+            cst_all = self.chkterr2(train)[0]/16
+            self.mse.append(cst_all)
+            cst_test = self.chkterr2(test_correct)[0]/16
+            self.mse_test.append(cst_test)
+            cst_train = self.chkterr2(correct)[0]/16
+            self.mse_train.append(cst_train)
+            # 【注意】内存不足时使用chkterr2但是会慢，内存足够时使用 , self.get_mse(train)
+            # 【注意】不要直接使用cst变量作为cost，因为这里的cst是最后一个batch的cost而已，不是全部的
+            # 错误用法： print "Training error:", cst, "=", self.chkterr2(train)[0]/16, "==", self.get_mse(train)
+            print "Training error:", cst_all #, "==", self.get_mse(train)
+            print "Training_correct error", cst_train
+            print "Testing_correct error:", cst_test
+
           
             # Saving the ranking and top1,5,10 information
             rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
@@ -536,6 +567,7 @@ class LSTM():
             print "epoch took:",sto - sta
 
     # --- check the error 2 ---# 
+    # 【注意】这个函数之所以效率低下，要每256组数据为一个循环来做数据的预测 -> 为了防止内存不足！！
     def chkterr2(self, mydata):
         # count = []
         num = len(mydata)
@@ -694,4 +726,46 @@ class LSTM():
 
         return rank_results_train, n_tops
 
+
+    def get_mse(self, data):
+        # list saving the projection results (50 dim):
+
+        x1, mas1, x2, mas2, y2 = prepare_data(data)
+        # print "Finish preparing the data!"
+        use_noise.set_value(0.)
+
+        n_samples = len(data)
+
+        ls = []   # Embedding results of xa
+        ls2 = []  # Embedding results of xb
+        for j in range(0, n_samples):
+            ls.append(embed(x1[j]))
+            ls2.append(embed(x2[j]))
+
+        # print "Finished embedding,start projecting..."
+
+        # start_time = time.time()
+        # for i in range(0, n_samples):
+
+        # print "conducting the", i, "projection"
+        # loop_time = time.time()
+
+        trconv = np.dstack(ls)
+        trconv2 = np.dstack(ls2)
+        
+        emb1 = np.swapaxes(trconv, 1, 2)
+        emb2 = np.swapaxes(trconv2, 1, 2)
+
+        # list saving the projection results (50 dim):
+
+        # list_projection1 = self.f_proj11(emb1, mas1)
+        # list_projection2 = self.f_proj11(emb2, mas2)
+        c = self.f_cost(emb1, mas1, emb2, mas2, y2)
+
+        # After projection, compare the distance for possible pairs
+        # ## SKIP
+
+
+
+        return c
 

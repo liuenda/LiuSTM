@@ -14,6 +14,7 @@ import pickle
 # TODO1: 每次都要计算imilarity table效率太低了。1000行还可接受，但是更多行就不行了
 # 首先边计算边存储到一个dictionary去[已完成]
 
+maxlen = 0
 k = 10
 wnl = 0
 dim = 200
@@ -317,16 +318,17 @@ if __name__ == "__main__":
 	train = train_1 + train_2
 
 	# True to training the data, False to laod the existed data
+	print("Now the maxlen =", maxlen)
 	if True:
-		dir_file = "weights/201612140109_e10_1k1k.p"
+		dir_file = "weights/201701051610_e20_1k1k_l200.p"
 		print "Starting to training the model..., saving to", dir_file
-		sls=lstm.LSTM(dir_file, load=False, training=True)
+		sls=lstm.LSTM(dir_file, maxlen, load=False, training=True)
 		sls.train_lstm(train, 20, train_1, test_1)
 		sls.save_model()
 	else:
-		dir_file = "weights/201612140109_e10_1k1k.p"
+		dir_file = "weights/201701051610_e20_1k1k_l200.p"
 		print "NO Training. Load the existed model:", dir_file
-		sls=lstm.LSTM(dir_file, load=True, training=False)
+		sls=lstm.LSTM(dir_file, maxlen, load=True, training=False)
 
 
 	#--- New method to evaluate the results ------------------------

@@ -325,11 +325,12 @@ def rmsprop(lr, tparams, grads, emb11,mask11,emb21,mask21,y, cost):
 
 
 class LSTM():    
-    def __init__(self, nam, load=False, training=False):
+    def __init__(self, nam, maxlen=0, load=False, training=False):
 
         # 创建2个LSTM单元（参数：WUb）放入词典中，并初始化参数
         # Generate 2 LSTM unit with Guassian innitialization
         # Type: Dictionary
+        self.maxlen = maxlen
         newp = creatrnnx() 
         self.model_name = nam
         # 让两个LSTM单元的参数WUb的初始相同
@@ -508,7 +509,7 @@ class LSTM():
             #---------------------------------------------------------------------#
 
                 # Mask for LSTM is prepared by sentence module
-                x1, mas1, x2, mas2, y2 = prepare_data(q)
+                x1, mas1, x2, mas2, y2 = prepare_data(q, self.maxlen)
                 
                 ls = []
                 ls2 = []
@@ -581,7 +582,7 @@ class LSTM():
                 x = num
             for j in range(i, x):
                 q.append(mydata[j])
-            x1,mas1,x2,mas2,y2 = prepare_data(q)
+            x1,mas1,x2,mas2,y2 = prepare_data(q, self.maxlen)
             ls = []
             ls2 = []
             for j in range(0, len(q)):
@@ -606,7 +607,7 @@ class LSTM():
 
     def predict_similarity(self, sa, sb):
         q=[[sa, sb, 0]]
-        x1, mas1, x2, mas2, y2 = prepare_data(q)
+        x1, mas1, x2, mas2, y2 = prepare_data(q, self.maxlen)
         ls = []
         ls2 = []
         use_noise.set_value(0.)
@@ -629,7 +630,7 @@ class LSTM():
     # Evaluate the each pairs of multilingual language
     # Give each pair a similairty ranking (for 1-999)
     def evaluate(self, data):
-        x1, mas1, x2, mas2, y2 = prepare_data(data)
+        x1, mas1, x2, mas2, y2 = prepare_data(data, self.maxlen)
         use_noise.set_value(0.)
 
         n_samples = len(data)
@@ -674,7 +675,7 @@ class LSTM():
     def seq2vec(self, data):
         # list saving the projection results (50 dim):
 
-        x1, mas1, x2, mas2, y2 = prepare_data(data)
+        x1, mas1, x2, mas2, y2 = prepare_data(data, self.maxlen)
         # print "Finish preparing the data!"
         use_noise.set_value(0.)
 
@@ -730,7 +731,7 @@ class LSTM():
     def get_mse(self, data):
         # list saving the projection results (50 dim):
 
-        x1, mas1, x2, mas2, y2 = prepare_data(data)
+        x1, mas1, x2, mas2, y2 = prepare_data(data, self.maxlen)
         # print "Finish preparing the data!"
         use_noise.set_value(0.)
 

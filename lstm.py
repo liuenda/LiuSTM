@@ -565,7 +565,8 @@ class LSTM():
             print pd.Series(rank_results_test).describe()
 
             sto = time.time()
-            print "epoch took:",sto - sta
+            self.time_saver = sto - sta
+            print "epoch took:", self.time_saver
 
     # --- check the error 2 ---# 
     # 【注意】这个函数之所以效率低下，要每256组数据为一个循环来做数据的预测 -> 为了防止内存不足！！

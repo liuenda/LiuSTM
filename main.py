@@ -14,7 +14,8 @@ import pickle
 # TODO1: 每次都要计算imilarity table效率太低了。1000行还可接受，但是更多行就不行了
 # 首先边计算边存储到一个dictionary去[已完成]
 
-maxlen = 0
+epoch = 40
+maxlen = 0 # Default: 0 -> infinite
 k = 10
 wnl = 0
 dim = 200
@@ -312,28 +313,28 @@ if __name__ == "__main__":
 
 
 
-
+	#---------------------- 1 time training ------------------------
 	#-----------------------Load/Train the LSTM model---------------
 
 	train = train_1 + train_2
 
 	# True to training the data, False to laod the existed data
-	print("Now the maxlen =", maxlen)
+	print "Now the maxlen =", maxlen
 	if True:
-		dir_file = "weights/201701051610_e20_1k1k_l200.p"
+		dir_file = "weights/2017012218009_e40_1k1k_l0.p"
 		print "Starting to training the model..., saving to", dir_file
 		sls=lstm.LSTM(dir_file, maxlen, load=False, training=True)
-		sls.train_lstm(train, 20, train_1, test_1)
+		sls.train_lstm(train, epoch, train_1, test_1)
 		sls.save_model()
 	else:
-		dir_file = "weights/201701051610_e20_1k1k_l200.p"
+		dir_file = "weights/201701102308_e40_1k1k_l0.p"
 		print "NO Training. Load the existed model:", dir_file
 		sls=lstm.LSTM(dir_file, maxlen, load=True, training=False)
 
 
 	#--- New method to evaluate the results ------------------------
 	#--------------------Evaluate the results using new method------
-	if True:
+	if False:
 		print "Evaluate the model using fast estimation..."
 		projection1_train, projection2_train = sls.seq2vec(train_1)
 		projection1_test, projection2_test = sls.seq2vec(test_1)
@@ -344,9 +345,40 @@ if __name__ == "__main__":
 		print pd.Series(rank_results_train).describe()
 		print pd.Series(rank_results_test).describe()
 
+		## Save the training results to pickle
 		# root_dir = "pickles/"
 		# with open(root_dir + "rank_results_train_20161214.py", 'wb') as handle:
 		#     pickle.dump(train_1, handle)
 		# with open(root_dir + "train_1.p", 'wb') as handle:
 		#     pickle.dump(train_1, handle)
+
+	#----- multiple time trainings to find optimal parameters -------
+
+	# mse_maxlen = {}
+	# mse_maxlen_train = {}
+	# mse_maxlen_test = {}
+	# time_cost = {}
+
+	# def save_mse_maxlen(maxlen, sls):
+	# 	mse_maxlen[maxlen] = list(sls.mse)
+	# 	mse_maxlen_train[maxlen] = list(sls.mse_train)
+	# 	mse_maxlen_test[maxlen] = list(sls.mse_test)
+	# 	time_cost[maxlen] = sls.time_saver
+
+	# for length in range(50,1000,50):
+	# 	maxlen = length
+	# 	dir_file = "weights/e40_1k1k_l.p" + str(maxlen) + ".p"
+	# 	print "Starting to training the model..., saving to", dir_file
+	# 	sls = lstm.LSTM(dir_file, maxlen, load=False, training=True)
+	# 	sls.train_lstm(train, epoch, train_1, test_1)
+	# 	save_mse_maxlen(maxlen, sls)
+	# 	with open(root_dir + "mse_maxlen.p", 'wb') as handle:
+	# 		pickle.dump(mse_maxlen, handle)
+	# 	with open(root_dir + "mse_maxlen_train.p", 'wb') as handle:
+	# 		pickle.dump(mse_maxlen_train, handle)
+	# 	with open(root_dir + "mse_maxlen_test.p", 'wb') as handle:
+	# 		pickle.dump(mse_maxlen_test, handle)
+	# 	with open(root_dir + "time_cost.p", 'wb') as handle:
+	# 		pickle.dump(time_cost, handle)
+
 

@@ -425,7 +425,7 @@ class LSTM():
 
         lrate = 0.0001 # Learning rate, but Not USED ???
         freq = 0 # ???
-        batchsize = 32
+        batchsize = 64 
         dfreq = 21 #display frequency
 
         self.mse = [] # MSE of train1 + train2
@@ -457,6 +457,7 @@ class LSTM():
         # Saving (Initialization) the ranking and top1,5,10 information (Trianing data)
         rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
         # print "[debug]", n_tops
+        self.rank.append(rank_results_train) # 2017.2.28 save the initial state
         for top_key in self.top_keys:
             # print "[debug]", n_tops[top_key]
             self.tops[top_key] = []
@@ -468,6 +469,7 @@ class LSTM():
         # Saving (Initialization) the ranking and top1,5,10 information (Testing data)
         rank_results_test, n_tops_test = self.evaluate2(test_correct, tops=self.top_keys) # Similairty check
         # print "[debug]", n_tops
+        self.rank_test.append(rank_results_test) # 2017.2.28 save the initial state
         for top_key in self.top_keys:
             # print "[debug]", n_tops[top_key]
             self.tops_test[top_key] = []

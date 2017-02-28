@@ -14,7 +14,7 @@ import pickle
 # TODO1: 每次都要计算imilarity table效率太低了。1000行还可接受，但是更多行就不行了
 # 首先边计算边存储到一个dictionary去[已完成]
 
-epoch = 40
+epoch = 100
 maxlen = 0 # Default: 0 -> infinite
 k = 10
 wnl = 0
@@ -204,7 +204,9 @@ def prepare_trainig(dir_en, dir_jp):
 
 	# Convert list of cluster number to a string 
 	print "Convert cluster names(list) to cluster namse(string)"
-	df_train_1[['xa','xb']] = df_train_1[['transformation_en','en2jp_projection']].applymap(lambda x:' '.join(str(v) for v in x))
+	# 2017-2-20 搞错了，这里的xa应该不是transformation_en，而应该是transformation_jp 【重大错误】
+	# df_train_1[['xa','xb']] = df_train_1[['transformation_en','en2jp_projection']].applymap(lambda x:' '.join(str(v) for v in x))
+	df_train_1[['xa','xb']] = df_train_1[['transformation_jp','en2jp_projection']].applymap(lambda x:' '.join(str(v) for v in x))
 
 
 	# Expand the training data
@@ -321,20 +323,20 @@ if __name__ == "__main__":
 	# True to training the data, False to laod the existed data
 	print "Now the maxlen =", maxlen
 	if True:
-		dir_file = "weights/2017012218009_e40_1k1k_l0.p"
+		dir_file = "weights/201702281025_e1_1k1k_l0_b64.p"
 		print "Starting to training the model..., saving to", dir_file
 		sls=lstm.LSTM(dir_file, maxlen, load=False, training=True)
 		sls.train_lstm(train, epoch, train_1, test_1)
 		sls.save_model()
 	else:
-		dir_file = "weights/201701102308_e40_1k1k_l0.p"
+		dir_file = "weights/201702212157_e100_1k1k_l0.p"
 		print "NO Training. Load the existed model:", dir_file
 		sls=lstm.LSTM(dir_file, maxlen, load=True, training=False)
 
 
 	#--- New method to evaluate the results ------------------------
 	#--------------------Evaluate the results using new method------
-	if False:
+	if True:
 		print "Evaluate the model using fast estimation..."
 		projection1_train, projection2_train = sls.seq2vec(train_1)
 		projection1_test, projection2_test = sls.seq2vec(test_1)

@@ -12,8 +12,8 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 # from sentences import *
 # from random import sample
 import random
-from sentences import prepare_data as prepare_data
-from sentences import embed as embed
+from sentences_project import prepare_data as prepare_data
+from sentences_project import embed_w2v as embed
 import pandas as pd
 # from sentences import expand as expand # Useless in the later tasks
 
@@ -521,8 +521,8 @@ class LSTM():
                 freq += 1
                 use_noise.set_value(1.)
                 for j in range(0, len(x1)):
-                    ls.append(embed(x1[j]))
-                    ls2.append(embed(x2[j]))
+                    ls.append(embed(x1[j], 'en'))
+                    ls2.append(embed(x2[j], 'jp'))
                 trconv = np.dstack(ls)
                 trconv2 = np.dstack(ls2)
                 emb2 = np.swapaxes(trconv2, 1, 2)
@@ -592,8 +592,8 @@ class LSTM():
             ls = []
             ls2 = []
             for j in range(0, len(q)):
-                ls.append(embed(x1[j]))
-                ls2.append(embed(x2[j]))
+                ls.append(embed(x1[j], 'en'))
+                ls2.append(embed(x2[j], 'jp'))
             trconv = np.dstack(ls)
             trconv2 = np.dstack(ls2)
             emb2 = np.swapaxes(trconv2, 1, 2)
@@ -618,8 +618,8 @@ class LSTM():
         ls2 = []
         use_noise.set_value(0.)
         for j in range(0, len(x1)):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en'))
+            ls2.append(embed(x2[j], 'jp'))
         trconv = np.dstack(ls)
         trconv2 = np.dstack(ls2)
         emb2 = np.swapaxes(trconv2, 1, 2)
@@ -644,8 +644,8 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en'))
+            ls2.append(embed(x2[j], 'jp'))
 
         # print "ls: (should be the same ref_embed)", ls
         rank_results = []
@@ -690,8 +690,8 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en'))
+            ls2.append(embed(x2[j], 'jp'))
 
         # print "Finished embedding,start projecting..."
 
@@ -746,8 +746,8 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en'))
+            ls2.append(embed(x2[j], 'jp'))
 
         # print "Finished embedding,start projecting..."
 

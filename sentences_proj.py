@@ -10,13 +10,25 @@ from gensim.models import word2vec
 # d2 = pickle.load(open(data_path + "synsem.p",'rb'))
 # dtr = pickle.load(open(data_path + "dwords.p", 'rb'))
 
-data_path = "./data/"
+# data_path = "./data/"
 # maxlen = 200
 
 # model = word2vec.Word2Vec.load_word2vec_format(data_path + "GoogleNews-vectors-negative300.bin.gz",binary = True)
+# model = word2vec.Word2Vec.load_word2vec_format(data_path + "GoogleNews-vectors-negative300.bin.gz",binary = True)
 
+model_name_en = "../data/model-en/W2Vmodle.bin"
+model_name_jp = "../data/model-jp/W2Vmodle.bin"
+
+model_en = Word2Vec.load(model_name_en)
+model_jp = Word2Vec.load(model_name_jp)
 
 # This is called by prepare_data() called by lstm.py
+"""
+Mask for LSTM is prepared by sentence module
+emb1 = np.array([["我"，"很"，"好"，"，"，"，"，"，"][...]...])
+len(x1) => 文档的总数
+mas1 = np.array([[1,1,1,0,0,0,0,0,0,0][...]...])
+"""
 def getmtr(xa, maxlen):
     n_samples = len(xa)
     ls=[]
@@ -31,7 +43,10 @@ def getmtr(xa, maxlen):
     xa = np.array(ls)
     return xa, x_mask
 
+
 # This is called lstm.py
+# New version, 1. Cut the data with max. lentgh = maxlen
+# 2. Embedding 
 # Here xa1 and xa2 are the sentence pair to be compared
 # See onenote, search for xa1, xb2
 # x1.shape,mas1.shape -> ((11219, 72), (72, 11219))
@@ -40,6 +55,8 @@ def prepare_data(data, maxlen=0):
     xa1 = []
     xb1 = []
     y2 = []
+
+    # Cut the sentences according to maxlen
     if maxlen == 0:
         # No limitaiton of the maximum length of timesteps
         return prepare_data2(data)
@@ -53,14 +70,19 @@ def prepare_data(data, maxlen=0):
             xb1.append(b)
             y2.append(data[i][2])
 
-    #Embedding the given data
+    """
+    Mask for LSTM is prepared by sentence module
+    emb1 = np.array([["我"，"很"，"好"，"，"，"，"，"，"][...]...])
+    len(x1) => 文档的总数
+    mas1 = np.array([[1,1,1,0,0,0,0,0,0,0][...]...])
+    """
     emb1, mas1 = getmtr(xa1, maxlen)
     emb2, mas2 = getmtr(xb1, maxlen)
     
     y2 = np.array(y2,dtype = np.float32)
     return emb1, mas1, emb2, mas2, y2
 
-
+# Called by prepare_data(data, maxlen=0)
 # This is called lstm.py
 # Here xa1 and xa2 are the sentence pair to be compared
 # See onenote, search for xa1, xb2
@@ -88,6 +110,7 @@ def prepare_data2(data):
     maxlen = numpy.max(lengths)
     
     #Embedding the given data
+    # 注意： 这里的emb不是word embed，而是在结尾添加逗号
     emb1, mas1 = getmtr(xa1, maxlen)
     emb2, mas2 = getmtr(xb1, maxlen)
     
@@ -112,22 +135,44 @@ def prepare_data2(data):
 #             count += 1
 #     return dmtr
 
+"""
+This is called lstm.py
+[Word2vec] word embedding
+new embed
+stmx -> matrix of a sentence(document) -> shape=(len. of a sentence,)
+Convert each word to vector, like if input = 8 --> [0,0,0,0,0,0,0,1,0,0]
+"""
+# def embed(stmx, k=10):
+#     dmtr = numpy.zeros((stmx.shape[0], k), dtype = np.float32)
+#     count = 0
+#     while(count < len(stmx)):
+#         if stmx[count] == ',':
+#             count += 1
+#             # print ","
+#             continue
+#         else:
+#             dmtr[count][int(stmx[count])-1] = 1
+#             # print int(stmx[count])-1
+#             count += 1
+#             # if int(stmx[count])-1 < 0 or int(stmx[count])-1 > 9:
+#             #     print "Error!!!!!!!"
+#     return dmtr
 
-# This is called lstm.py
-#new embed
-# For instance, for input 8 --> [0,0,0,0,0,0,0,1,0,0]
-def embed(stmx, k=10):
-    dmtr = numpy.zeros((stmx.shape[0], k), dtype = np.float32)
-    count = 0
-    while(count < len(stmx)):
-        if stmx[count] == ',':
-            count += 1
-            # print ","
+def embed_w2v(stmx, k=200, lang):
+    model = model_jp if lang == 'jp' else model_en
+    dmtr=numpy.zeros((stmx.shape[0], k),dtype=np.float32)
+    count=0
+    while(count<len(stmx)):
+        if stmx[count]==',':
+            count+=1
             continue
         else:
-            dmtr[count][int(stmx[count])-1] = 1
-            # print int(stmx[count])-1
-            count += 1
-            # if int(stmx[count])-1 < 0 or int(stmx[count])-1 > 9:
-            #     print "Error!!!!!!!"
+            if lang = 'jp':
+                dmtr[count]=model[stmx[count]]
+            else:
+                dmtr[count]=model[stmx[count]].dot(W)
+            count+=1
     return dmtr
+
+# def embed_non(stmx):
+#   return None

@@ -1,7 +1,49 @@
 # coding: utf-8
+import random
+import pickle
 import time
 import pandas as pd
 import numpy as np
+import lstm_proj as lstm
+
+maxlen = 0 # Default: 0 -> infinite
+epoch = 50
+random.seed(1234)
+
+def prepare_train(dir_en, dir_jp):
+
+	df_en_mapping = pd.read_csv(dir_en)
+	df_jp_mapping = pd.read_csv(dir_jp)
+
+	print "Reading english Data:", len(df_en_mapping)
+	print "Reading english Data:", len(df_jp_mapping)
+
+	sample_size = len(df_en_mapping)
+
+	assert len(df_en_mapping) == len(df_jp_mapping)
+
+	# Convert mapping to list type and then concat to the a list
+	print "Merging the English and Japanes news dataframe..."
+	df_train_1 = pd.concat([df_en_mapping, df_jp_mapping], axis = 1)
+	df_train_1['similarity'] = pd.Series(np.ones(sample_size,)*5)
+	df_train_1['dis_similarity'] = pd.Series(np.ones(sample_size,)*1)
+
+	# Remove null line
+	print "Drop the null line..."
+	# df_train_1 = df_train_1.dropna(subset=['en_article'])
+	df_train_1 = df_train_1[df_train_1['en_article'] != '<NULL>']
+
+	# Expand the training data
+	en_article_wrong = df_train_1.en_article.iloc[random.sample(xrange(len(df_train_1)),len(df_train_1))]
+	en_article_wrong.index = df_train_1.index
+	print (en_article_wrong == df_train_1.en_article).value_counts()
+	df_train_1['en_article_wrong'] = en_article_wrong 
+
+	# Convert dateframe to list
+	train_1 = df_train_1[['en_article','jp_article','similarity']].values.tolist()
+	train_2 = df_train_1[['en_article_wrong','jp_article','dis_similarity']].values.tolist()
+
+	return train_1, train_2, df_train_1
 
 
 def	word_embedding(a_sentence, model):
@@ -88,13 +130,49 @@ if __name__ == "__main__":
 	J = df_J.drop('jp',axis=1)
 	W = fit_projection(E, J)
 
-	# root_dir = "../pickles/"
-	# df_train_1 = pickle.load(open(root_dir + "df_train_1.p",'rb'))
-	# df_test_1 = pickle.load(open(root_dir + "df_test_1.p",'rb'))	
+	root_dir = "./pickles/"
+	df_train_1 = pickle.load(open(root_dir + "df_train_1.p",'rb'))
+	df_test_1 = pickle.load(open(root_dir + "df_test_1.p",'rb'))	
 
-	# model_name_en = "../data/model-en/W2Vmodle.bin"
-	# model_name_jp = "../data/model-jp/W2Vmodle.bin"
+	k = 10
 
-	# model_en = Word2Vec.load(model_name_en)
-	# model_jp = Word2Vec.load(model_name_jp)
+	# Prepare For the training data
+	sample_size = "_1000"
+	dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
+	dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
 
+	train_1, train_2, df_train_1 = 	prepare_train(dir_en, dir_jp)
+
+	# Prepare For the test data
+	sample_size = "_1k2k"
+	dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
+	dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
+
+	test_1, test_2, df_test_1 = prepare_train(dir_en, dir_jp)
+
+	# Expand the training data
+	train = train_1 + train_2
+ 	
+	# True to training the data, False to laod the existed data
+	print "Now the maxlen =", maxlen
+	if True:
+		dir_file = "weights/proj/20170318_e1_1k1k_l0_b64.p"
+		print "Starting to training the model..., saving to", dir_file
+		sls=lstm.LSTM(dir_file, W, maxlen=maxlen, load=False, training=True)
+		sls.train_lstm(train, epoch, train_1, test_1)
+		sls.save_model()
+	else:
+		dir_file = "weights/proj/20170318_e1_1k1k_l0_b64.p"
+		print "NO Training. Load the existed model:", dir_file
+		sls=lstm.LSTM(dir_file, W, maxlen=maxlen, load=True, training=False)
+	
+	if True:
+		print "Evaluate the model using fast estimation..."
+		projection1_train, projection2_train = sls.seq2vec(train_1)
+		projection1_test, projection2_test = sls.seq2vec(test_1)
+
+		sim_results_train, rank_results_train = lstm.find_ranking(projection1_train, projection2_train)
+		sim_results_test, rank_results_test = lstm.find_ranking(projection1_test, projection2_test)
+
+		print pd.Series(rank_results_train).describe()
+		print pd.Series(rank_results_test).describe()

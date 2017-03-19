@@ -12,8 +12,8 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 # from sentences import *
 # from random import sample
 import random
-from sentences_project import prepare_data as prepare_data
-from sentences_project import embed_w2v as embed
+from sentences_proj import prepare_data as prepare_data
+from sentences_proj import embed_w2v as embed
 import pandas as pd
 # from sentences import expand as expand # Useless in the later tasks
 
@@ -135,12 +135,12 @@ def getlayerx(d, pref, n, nin):
 def creatrnnx():
     newp = OrderedDict()
     #print ("Creating neural network")
-    newp = getlayerx(newp, '1lstm1', 50, 10)
+    newp = getlayerx(newp, '1lstm1', 50, 200)
     #newp=getlayerx(newp,'1lstm2',30,50)
     #newp=getlayerx(newp,'1lstm3',40,60)
     #newp=getlayerx(newp,'1lstm4',6)
     #newp=getlayerx(newp,'1lstm5',4)
-    newp = getlayerx(newp, '2lstm1', 50, 10)
+    newp = getlayerx(newp, '2lstm1', 50, 200)
     #newp=getlayerx(newp,'2lstm2',20,10)
     #newp=getlayerx(newp,'2lstm3',10,20)
     #newp=getlayerx(newp,'2lstm4',6)
@@ -325,8 +325,9 @@ def rmsprop(lr, tparams, grads, emb11,mask11,emb21,mask21,y, cost):
 
 
 class LSTM():    
-    def __init__(self, nam, maxlen=0, load=False, training=False):
+    def __init__(self, nam, W, maxlen=0, load=False, training=False):
 
+        self.W = W
         # 创建2个LSTM单元（参数：WUb）放入词典中，并初始化参数
         # Generate 2 LSTM unit with Guassian innitialization
         # Type: Dictionary
@@ -422,10 +423,11 @@ class LSTM():
 
         # test = train
 
-
+        print "Batchsize =", batchsize
+       	print "max_epochs =", max_epochs
         lrate = 0.0001 # Learning rate, but Not USED ???
         freq = 0 # ???
-        batchsize = 32
+        batchsize = 64
         dfreq = 21 #display frequency
 
         self.mse = [] # MSE of train1 + train2
@@ -521,7 +523,7 @@ class LSTM():
                 freq += 1
                 use_noise.set_value(1.)
                 for j in range(0, len(x1)):
-                    ls.append(embed(x1[j], 'en'))
+                    ls.append(embed(x1[j], 'en', W=self.W))
                     ls2.append(embed(x2[j], 'jp'))
                 trconv = np.dstack(ls)
                 trconv2 = np.dstack(ls2)
@@ -592,7 +594,7 @@ class LSTM():
             ls = []
             ls2 = []
             for j in range(0, len(q)):
-                ls.append(embed(x1[j], 'en'))
+                ls.append(embed(x1[j], 'en', W=self.W))
                 ls2.append(embed(x2[j], 'jp'))
             trconv = np.dstack(ls)
             trconv2 = np.dstack(ls2)
@@ -618,7 +620,7 @@ class LSTM():
         ls2 = []
         use_noise.set_value(0.)
         for j in range(0, len(x1)):
-            ls.append(embed(x1[j], 'en'))
+            ls.append(embed(x1[j], 'en', W=self.W))
             ls2.append(embed(x2[j], 'jp'))
         trconv = np.dstack(ls)
         trconv2 = np.dstack(ls2)
@@ -644,7 +646,7 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j], 'en'))
+            ls.append(embed(x1[j], 'en', W=self.W))
             ls2.append(embed(x2[j], 'jp'))
 
         # print "ls: (should be the same ref_embed)", ls
@@ -690,7 +692,7 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j], 'en'))
+            ls.append(embed(x1[j], 'en', W=self.W))
             ls2.append(embed(x2[j], 'jp'))
 
         # print "Finished embedding,start projecting..."
@@ -746,7 +748,7 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j], 'en'))
+            ls.append(embed(x1[j], 'en', W=self.W))
             ls2.append(embed(x2[j], 'jp'))
 
         # print "Finished embedding,start projecting..."

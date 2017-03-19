@@ -1,3 +1,4 @@
+# coding: utf-8
 import numpy
 import numpy as np
 import pickle
@@ -16,11 +17,11 @@ from gensim.models import word2vec
 # model = word2vec.Word2Vec.load_word2vec_format(data_path + "GoogleNews-vectors-negative300.bin.gz",binary = True)
 # model = word2vec.Word2Vec.load_word2vec_format(data_path + "GoogleNews-vectors-negative300.bin.gz",binary = True)
 
-model_name_en = "../data/model-en/W2Vmodle.bin"
-model_name_jp = "../data/model-jp/W2Vmodle.bin"
+model_name_en = "./data/model-en/W2Vmodle.bin"
+model_name_jp = "./data/model-jp/W2Vmodle.bin"
 
-model_en = Word2Vec.load(model_name_en)
-model_jp = Word2Vec.load(model_name_jp)
+model_en = word2vec.Word2Vec.load(model_name_en)
+model_jp = word2vec.Word2Vec.load(model_name_jp)
 
 # This is called by prepare_data() called by lstm.py
 """
@@ -158,7 +159,7 @@ Convert each word to vector, like if input = 8 --> [0,0,0,0,0,0,0,1,0,0]
 #             #     print "Error!!!!!!!"
 #     return dmtr
 
-def embed_w2v(stmx, k=200, lang):
+def embed_w2v(stmx, lang, k=200, W=0):
     model = model_jp if lang == 'jp' else model_en
     dmtr=numpy.zeros((stmx.shape[0], k),dtype=np.float32)
     count=0
@@ -167,9 +168,11 @@ def embed_w2v(stmx, k=200, lang):
             count+=1
             continue
         else:
-            if lang = 'jp':
+            if lang == 'jp':
                 dmtr[count]=model[stmx[count]]
             else:
+                # Check whether W has assigned
+                assert type(W) != int
                 dmtr[count]=model[stmx[count]].dot(W)
             count+=1
     return dmtr

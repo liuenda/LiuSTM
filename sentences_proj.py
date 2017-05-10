@@ -170,6 +170,7 @@ def embed_w2v(stmx, lang, k=200, W=0):
         else:
             if lang == 'jp':
                 dmtr[count]=model[stmx[count]]
+            # if lang is EN, convert to the Janaese space
             else:
                 # Check whether W has assigned
                 assert type(W) != int

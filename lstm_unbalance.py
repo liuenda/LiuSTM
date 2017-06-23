@@ -12,8 +12,8 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 # from sentences import *
 # from random import sample
 import random
-from sentences import prepare_data as prepare_data
-from sentences import embed as embed
+from sentences_proj import prepare_data as prepare_data
+from sentences_proj import embed_w2v as embed
 import pandas as pd
 # from sentences import expand as expand # Useless in the later tasks
 
@@ -34,6 +34,8 @@ def cal_similarity(a, b):
     return sim
 
 # Find the ranking results with respect to real pairs
+# Defaulty, projection1 should be JP
+# Whiile, projection2 should be EN->JP
 def find_ranking(projection1, projection2):
     sim_results = []
     rank_results = []
@@ -101,46 +103,46 @@ def genm(mu, sigma, n1, n2):
 # Example: newp = getlayerx(newp, '1lstm1', 50, 300)
 # d: OrderedDictionary, pref: prefix (name), n: timesteps, nin: input dimension
 def getlayerx(d, pref, n, nin):
-    
+
     # mean value for normal distribution
-    mu = 0.0 
+    mu = 0.0
 
     # deviation for normal distribution
-    sigma = 0.2 
-    
+    sigma = 0.2
+
     # U, with random initialization
     U = np.concatenate([genm(mu, sigma, n, n), genm(mu, sigma, n, n), genm(mu, sigma, n, n), genm(mu, sigma, n, n)]) / np.sqrt(n)
     U = np.array(U, dtype = np.float32)
-    
+
     # W, with random initialization
     W = np.concatenate([genm(mu, sigma, n, nin), genm(mu, sigma, n, nin), genm(mu, sigma, n, nin), genm(mu, sigma, n, nin)]) / np.sqrt(np.sqrt(n * nin))
     W = np.array(W, dtype = np.float32)
-    
+
     # b, with random initialization
     # Initialize the b_i, b_f, b_c and b_o in the same time
-    b = np.random.uniform(-0.5, 0.5, size=(4*n,)) 
-    
+    b = np.random.uniform(-0.5, 0.5, size=(4*n,))
+
     # set thhe bias of the forget gates b[n:n+n]) to 1.5
     #b = numpy.zeros((n * 300,))+1.5
-    b[n:n*2] = 1.5 
+    b[n:n*2] = 1.5
 
     # Update the dictionary
     d[_p(pref, 'U')] = U
     d[_p(pref, 'W')] = W
     d[_p(pref, 'b')] = b.astype(config.floatX)
-    
+
     return d
 
 # Here the hidden unite is set to be 50
 def creatrnnx():
     newp = OrderedDict()
     #print ("Creating neural network")
-    newp = getlayerx(newp, '1lstm1', 50, 10)
+    newp = getlayerx(newp, '1lstm1', 50, 200)
     #newp=getlayerx(newp,'1lstm2',30,50)
     #newp=getlayerx(newp,'1lstm3',40,60)
     #newp=getlayerx(newp,'1lstm4',6)
     #newp=getlayerx(newp,'1lstm5',4)
-    newp = getlayerx(newp, '2lstm1', 50, 10)
+    newp = getlayerx(newp, '2lstm1', 50, 200)
     #newp=getlayerx(newp,'2lstm2',20,10)
     #newp=getlayerx(newp,'2lstm3',10,20)
     #newp=getlayerx(newp,'2lstm4',6)
@@ -159,7 +161,7 @@ def dropout_layer(state_before, use_noise, rrng,rate):
 
 
 # Usage example:
-# proj11 = getpl2(prevlayer =emb11, pre = '1lstm1', mymask = mask11, 
+# proj11 = getpl2(prevlayer =emb11, pre = '1lstm1', mymask = mask11,
 #                   used = False, rrng, size = 50, tnewp)[-1]
 def getpl2(prevlayer, pre, mymask, used, rrng, size, tnewp):
 	# lstm_layer2() returns the value of hidden layer (hvals)
@@ -169,7 +171,7 @@ def getpl2(prevlayer, pre, mymask, used, rrng, size, tnewp):
     if used:
         print "Added dropout"
         proj = dropout_layer(proj, use_noise, rrng, 0.5)
-        
+
     return proj
 
 # nhd -> number of hidden units -> dim(output)
@@ -215,7 +217,7 @@ def lstm_layer2(tparams, state_below, options, prefix='lstm', mask=None, nhd=Non
     # Re new the state_below to -> Wx_t + b ???
     state_below = (tensor.dot(state_below, tparams[_p(prefix, 'W')].T) +
                    tparams[_p(prefix, 'b')].T)
-    
+
     #print "hvals"
     dim_proj = nhd
 
@@ -275,7 +277,7 @@ def adadelta(lr, tparams, grads, emb11,mask11,emb21,mask21,y, cost):
 
 # NOT USED
 def sgd(lr, tparams, grads, emb11,mask11,emb21,mask21,y, cost):
-    
+
     gshared = [theano.shared(p.get_value() * 0., name='%s_grad' % k)
                for k, p in tparams.iteritems()]
     gsup = [(gs, g) for gs, g in zip(gshared, grads)]
@@ -324,14 +326,15 @@ def rmsprop(lr, tparams, grads, emb11,mask11,emb21,mask21,y, cost):
 
 
 
-class LSTM():    
-    def __init__(self, nam, maxlen=0, load=False, training=False):
+class LSTM():
+    def __init__(self, nam, W, maxlen=0, load=False, training=False):
 
+        self.W = W
         # 创建2个LSTM单元（参数：WUb）放入词典中，并初始化参数
         # Generate 2 LSTM unit with Guassian innitialization
         # Type: Dictionary
         self.maxlen = maxlen
-        newp = creatrnnx() 
+        newp = creatrnnx()
         self.model_name = nam
         # 让两个LSTM单元的参数WUb的初始相同
         # Make the weights(WUb) of both LSTM unit same
@@ -355,7 +358,7 @@ class LSTM():
         # Shared tenasor variable
         self.tnewp = init_tparams(newp)
 
-        # Set tensor-type noise 
+        # Set tensor-type noise
         use_noise = theano.shared(numpy_floatX(0.))
 
         # Set tensor-type random number generator
@@ -369,11 +372,11 @@ class LSTM():
         # print "rrng:"
         # print "type of rrng:", type(rrng)
         # print rrng
-        
+
         # 具体化LSTM模型的结构和参数（核心）proj代表着一个mini-batch输入以后的输出值
         # Implement the LSTM module;
         # Here 'False' -> NOT apply DROPOUT layers;
-        # Since the input is in the format: (Max No. of words in batch, No. of Samples, 300) 
+        # Since the input is in the format: (Max No. of words in batch, No. of Samples, 300)
         # Note: that the 1st term and 2nd term are exchanged!
         # 只需要getp()即scan循环以后的最后一次（timesteps）结果，之前记录LSTM输出的结果都抛弃
         # proj11[-1] -> (No. of samples[N], Hidden unit dimension[timesteps]) -> (N, 50)
@@ -395,11 +398,11 @@ class LSTM():
 
         # Prepare for the backpropogation and gradiant descend
         if training == True:
-            
+
             # 计算cost对不同参数的导数，并且平均两个LSTM模型的参数
-            # The gradi refers to gradients wrt. cost, and is a list containing gradients to be update weights 
-            # We average out the gradients by appending to another list grads[] 
-            # So, we average out the gradients : wrt LSTM_A and wrt LSTM_B 
+            # The gradi refers to gradients wrt. cost, and is a list containing gradients to be update weights
+            # We average out the gradients by appending to another list grads[]
+            # So, we average out the gradients : wrt LSTM_A and wrt LSTM_B
             # i.e, gradient= (grad(wrt(LSTM_A)+grad(wrt(LSTM_B))/2.0 to maintain the symmetricity between either LSTMs
             # wrt: (variable or list of variables) – term[s] for which we want gradients
             gradi = tensor.grad(cost, wrt = self.tnewp.values()) # T.grad -> differential
@@ -411,21 +414,22 @@ class LSTM():
                 grads.append(gravg)
             for i in range(0, len(self.tnewp.keys()) / 2):
                     grads.append(grads[i])
-            
+
             # Here, the f_grad_shared and f_update are theano functions
             self.f_grad_shared, self.f_update = adadelta(lr, self.tnewp, grads, emb11, mask11, emb21, mask21, y, cost)
-    
-    
-    def train_lstm(self, train, max_epochs, correct, test_correct):
+
+
+    def train_lstm(self, train, max_epochs, correct, test_correct, batchsize=32):
         print "Training"
         print "the length of the training data is ", len(train)
 
         # test = train
 
-
+        print "Batchsize =", batchsize
+       	print "max_epochs =", max_epochs
         lrate = 0.0001 # Learning rate, but Not USED ???
         freq = 0 # ???
-        batchsize = 64 
+        batchsize = 64
         dfreq = 21 #display frequency
 
         self.mse = [] # MSE of train1 + train2
@@ -453,11 +457,10 @@ class LSTM():
         print "Training_correct error", cst_train
         print "Testing_correct error:", cst_test
 
-        
+
         # Saving (Initialization) the ranking and top1,5,10 information (Trianing data)
         rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
         # print "[debug]", n_tops
-        self.rank.append(rank_results_train) # 2017.2.28 save the initial state
         for top_key in self.top_keys:
             # print "[debug]", n_tops[top_key]
             self.tops[top_key] = []
@@ -469,7 +472,6 @@ class LSTM():
         # Saving (Initialization) the ranking and top1,5,10 information (Testing data)
         rank_results_test, n_tops_test = self.evaluate2(test_correct, tops=self.top_keys) # Similairty check
         # print "[debug]", n_tops
-        self.rank_test.append(rank_results_test) # 2017.2.28 save the initial state
         for top_key in self.top_keys:
             # print "[debug]", n_tops[top_key]
             self.tops_test[top_key] = []
@@ -485,14 +487,14 @@ class LSTM():
             print 'Epoch', eidx, '...'
 
             num = len(train) # length of training data
-            
+
             #---------------------Shuffle the data------------------------------#
             # 为何不直接用shuffle函数？
             # generates a list with length of num from the population xrange(num)
             # Used for shuffling the training data each time for each epoches
-            # [5,2,6,.11,...] length -> len(train) 
-            rnd = random.sample(xrange(num), num) 
-            
+            # [5,2,6,.11,...] length -> len(train)
+            rnd = random.sample(xrange(num), num)
+
             # i would be (0,32,64,...)
             # Iterate all batches
             for i in range(0, num, batchsize):
@@ -500,7 +502,7 @@ class LSTM():
                 x = i + batchsize
                 if x > num:
                     x = num
-                
+
                 # Shuffle data
                 # Iterate samples inside each batch
                 # i -> start index of the batch
@@ -510,21 +512,26 @@ class LSTM():
                     q.append(train[rnd[z]])
             #---------------------------------------------------------------------#
 
-                # Mask for LSTM is prepared by sentence module
+                """
+                Mask for LSTM is prepared by sentence module
+                x1 = np.array([["我"，"很"，"好"，"，"，"，"，"，"][...]...])
+                len(x1) => 文档的总数
+                mas1 = np.array([[1,1,1,0,0,0,0,0,0,0][...]...])
+                """
                 x1, mas1, x2, mas2, y2 = prepare_data(q, self.maxlen)
-                
+
                 ls = []
                 ls2 = []
                 freq += 1
                 use_noise.set_value(1.)
                 for j in range(0, len(x1)):
-                    ls.append(embed(x1[j]))
-                    ls2.append(embed(x2[j]))
+                    ls.append(embed(x1[j], 'en', W=self.W))
+                    ls2.append(embed(x2[j], 'jp'))
                 trconv = np.dstack(ls)
                 trconv2 = np.dstack(ls2)
                 emb2 = np.swapaxes(trconv2, 1, 2)
                 emb1 = np.swapaxes(trconv, 1, 2)
-               
+
                 cst = self.f_grad_shared(emb2, mas2, emb1, mas1, y2)
                 s = self.f_update(lrate) # Not USED ???
 
@@ -532,7 +539,7 @@ class LSTM():
                     print 'Epoch ', eidx, 'Update ', freq, 'Cost ', cst
                 # print 'Epoch ', eidx, 'Update ', freq, 'Cost ', cst
 
-            # Evalution 
+            # Evalution
             # print self.chkterr2(train) # MSE check
             cst_all = self.chkterr2(train)[0]/16
             self.mse.append(cst_all)
@@ -547,7 +554,7 @@ class LSTM():
             print "Training_correct error", cst_train
             print "Testing_correct error:", cst_test
 
-          
+
             # Saving the ranking and top1,5,10 information
             rank_results_train, n_tops = self.evaluate2(correct, tops=self.top_keys) # Similairty check
             self.rank.append(rank_results_train)
@@ -556,7 +563,7 @@ class LSTM():
                 print "top-",top_key, "=", self.tops[top_key], ":", n_tops[top_key]
             print "Discription of evaluation (ranking) for training data:"
             print pd.Series(rank_results_train).describe()
-            
+
             # Saving the ranking and top1,5,10 information
             rank_results_test, n_tops_test = self.evaluate2(test_correct, tops=self.top_keys) # Similairty check
             self.rank_test.append(rank_results_test)
@@ -566,11 +573,14 @@ class LSTM():
             print "Discription of evaluation (ranking) for testing data:"
             print pd.Series(rank_results_test).describe()
 
+            # Saving the present weights:
+            self.save_model(name=self.model_name+"_"+str(eidx)+".p")
+
             sto = time.time()
             self.time_saver = sto - sta
             print "epoch took:", self.time_saver
 
-    # --- check the error 2 ---# 
+    # --- check the error 2 ---#
     # 【注意】这个函数之所以效率低下，要每256组数据为一个循环来做数据的预测 -> 为了防止内存不足！！
     def chkterr2(self, mydata):
         # count = []
@@ -589,8 +599,8 @@ class LSTM():
             ls = []
             ls2 = []
             for j in range(0, len(q)):
-                ls.append(embed(x1[j]))
-                ls2.append(embed(x2[j]))
+                ls.append(embed(x1[j], 'en', W=self.W))
+                ls2.append(embed(x2[j], 'jp'))
             trconv = np.dstack(ls)
             trconv2 = np.dstack(ls2)
             emb2 = np.swapaxes(trconv2, 1, 2)
@@ -615,18 +625,21 @@ class LSTM():
         ls2 = []
         use_noise.set_value(0.)
         for j in range(0, len(x1)):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en', W=self.W))
+            ls2.append(embed(x2[j], 'jp'))
         trconv = np.dstack(ls)
         trconv2 = np.dstack(ls2)
         emb2 = np.swapaxes(trconv2, 1, 2)
         emb1 = np.swapaxes(trconv, 1, 2)
         return self.f2sim(emb1, mas1, emb2, mas2)
 
-    def save_model(self, type = 'pikcle'):
+    def save_model(self, type = 'pikcle', name=None):
+        if name == None:
+            name = self.model_name
+    	print "Saving the model to", name
         self.new_params = unzip(self.tnewp)
         print "saving the model..."
-        with open(self.model_name, 'wb') as handle:
+        with open(name, 'wb') as handle:
             pickle.dump(self.new_params, handle)
 
 
@@ -641,14 +654,14 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en', W=self.W))
+            ls2.append(embed(x2[j], 'jp'))
 
         # print "ls: (should be the same ref_embed)", ls
         rank_results = []
 
         for i in range(0, n_samples):
-            
+
             # NOTE: mas1 and mas2 are verticle matrix, not a normal one!
             # ref_ls refers to n_samples(999,EN) of duplicated ls[i]
             # So we can compare the ls[i](EN) with other sentences(999,JP)
@@ -673,8 +686,8 @@ class LSTM():
             print "the round", i, "rank:", rank
 
         return rank_results
-    
-    # project a list of article (cluster numbers) to 50 dim vectors      
+
+    # project a list of article (cluster numbers) to 50 dim vectors
     def seq2vec(self, data):
         # list saving the projection results (50 dim):
 
@@ -687,8 +700,8 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en', W=self.W))
+            ls2.append(embed(x2[j], 'jp'))
 
         # print "Finished embedding,start projecting..."
 
@@ -700,7 +713,7 @@ class LSTM():
 
         trconv = np.dstack(ls)
         trconv2 = np.dstack(ls2)
-        
+
         emb1 = np.swapaxes(trconv, 1, 2)
         emb2 = np.swapaxes(trconv2, 1, 2)
 
@@ -715,7 +728,7 @@ class LSTM():
 
         return list_projection1, list_projection2
 
-    # Example: tops = [1, 5, 10] 
+    # Example: tops = [1, 5, 10]
     def evaluate2(self, data, tops):
         projection1_train, projection2_train = self.seq2vec(data)
         # projection1_test, projection2_test = sls.seq2vec(test_1)
@@ -743,8 +756,8 @@ class LSTM():
         ls = []   # Embedding results of xa
         ls2 = []  # Embedding results of xb
         for j in range(0, n_samples):
-            ls.append(embed(x1[j]))
-            ls2.append(embed(x2[j]))
+            ls.append(embed(x1[j], 'en', W=self.W))
+            ls2.append(embed(x2[j], 'jp'))
 
         # print "Finished embedding,start projecting..."
 
@@ -756,7 +769,7 @@ class LSTM():
 
         trconv = np.dstack(ls)
         trconv2 = np.dstack(ls2)
-        
+
         emb1 = np.swapaxes(trconv, 1, 2)
         emb2 = np.swapaxes(trconv2, 1, 2)
 

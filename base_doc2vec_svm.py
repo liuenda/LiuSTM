@@ -15,9 +15,11 @@ from sklearn import datasets
 from sklearn import linear_model
 from sklearn import svm
 from gensim.models import word2vec
-from sklearn import preprocessing
+from gensim.models import doc2vec
+from gensim.models.doc2vec import TaggedDocument
 import random
 import pickle
+from sklearn import preprocessing
 import time
 
 
@@ -65,12 +67,6 @@ def find_top(rank_results, top):
 	return n_top
 
 
-def average_docment(document_embedding):
-	return np.average(document_embedding, axis=0)
-
-def sum_docment(document_embedding):
-	return np.sum(document_embedding, axis=0)
-
 def doc2feature(corpus, tfidf, dictionary, w2v):
     doc_features = []
     for index, doc_bof in enumerate(corpus):
@@ -91,10 +87,6 @@ def doc2feature(corpus, tfidf, dictionary, w2v):
                 print("No word:", token)
                 continue
             doc_feature += token_w2v * token_tfidf
-
-        average = True
-        if average:
-            doc_feature = np.true_divide(doc_feature, len(doc_tfidf))
         doc_features.append(doc_feature)
 
     return doc_features
@@ -184,56 +176,43 @@ if __name__ == "__main__":
 	train = train_1 + train_2
 
 
-	# --- Apply the word2vec model to the data sets --- #
+	# --- Train or load the doc2vec model --- #
+	flag_train_doc2vec = False
 
-	model_name_en = "./data/model-en/W2Vmodle.bin"
-	model_name_jp = "./data/model-jp/W2Vmodle.bin"
+	if flag_train_doc2vec:
 
-	df_pairs_sample = df_pairs.iloc[0:5000]
+		# --- Prepare training data of doc2vec --- #
+		doc2vec_corpus_en = []
+		doc2vec_corpus_jp = []
+		for i, doc in enumerate(pairs_correct):
+			doc2vec_corpus_en.append(TaggedDocument(words=doc[0].split(), tags=[i]))
+			doc2vec_corpus_jp.append(TaggedDocument(words=doc[1].split(), tags=[i]))
 
-	df_pairs_sample['word2vec_en'] = df_pairs_sample['en_article'].apply(doc2vec_en)
-	df_pairs_sample['word2vec_jp'] = df_pairs_sample['jp_article'].apply(doc2vec_jp)
+		# --- Train the doc2vec model --- #
+		doc2vec_model_en = doc2vec.Doc2Vec(doc2vec_corpus_en, size=200, window=8, min_count=1, workers=14)
+		doc2vec_model_jp = doc2vec.Doc2Vec(doc2vec_corpus_jp, size=200, window=8, min_count=1, workers=14)
 
+		# --- Save the doc2vec model --- #
+		doc2vec_model_jp.save("./data/doc2vec_model_jp")
+		doc2vec_model_en.save("./data/doc2vec_model_en")
 
-	# Feature 1: TF-IDF + Average word2vec
-
-	# --- Find tf-idf * word2vec features --- #
-
-    #  For English text:
-    # texts_en = [doc.split() for doc in list(df_pairs_sample["en_article"])]
-	texts_en = [doc.split() for doc in list(df_pairs["en_article"])]
-	dictionary_en = corpora.Dictionary(texts_en)
-	corpus_en = [dictionary_en.doc2bow(text) for text in texts_en]
-	tfidf_en = models.TfidfModel(corpus_en)
-
-	#  For Japanese text:
-	# texts_jp = [doc.split() for doc in list(df_pairs_sample["jp_article"])]
-	texts_jp = [doc.split() for doc in list(df_pairs["jp_article"])]
-	dictionary_jp = corpora.Dictionary(texts_jp)
-	corpus_jp = [dictionary_jp.doc2bow(text) for text in texts_jp]
-	tfidf_jp = models.TfidfModel(corpus_jp)
-
-	features_en = doc2feature(corpus_en[:5000], tfidf_en, dictionary_en, model_en)
-	features_jp = doc2feature(corpus_jp[:5000], tfidf_jp, dictionary_jp, model_jp)
-
-	# --- When do not apply the tfidf re-weighting --- #
-	flag_NO_tfidf = False
-	if flag_NO_tfidf:
-
-		df_pairs_sample["sum_vector_en"] = df_pairs_sample['word2vec_en'].apply(sum_docment)
-		df_pairs_sample["sum_vector_jp"] = df_pairs_sample['word2vec_jp'].apply(sum_docment)
-		df_pairs_sample["average_vector_en"] = df_pairs_sample['word2vec_en'].apply(average_docment)
-		df_pairs_sample["average_vector_jp"] = df_pairs_sample['word2vec_jp'].apply(average_docment)
-
-		features_en = list(df_pairs_sample["average_vector_en"])
-		features_jp = list(df_pairs_sample["average_vector_jp"])
+	else:
+		# --- Load the saved doc2vec model --- #
+		doc2vec_model_en = doc2vec.Doc2Vec.load("./data/doc2vec_model_jp")
+		doc2vec_model_jp = doc2vec.Doc2Vec.load("./data/doc2vec_model_en")
 
 
+	# --- Evaluation 1: Using the cross-lingual projection directly --- #
+
+	# --- Evaluation 2: Using SVM training --- #
+
+	features_en = list(doc2vec_model_en.docvecs)[:5000]
+	features_jp = list(doc2vec_model_jp.docvecs)[:5000]
 	features_merge = np.concatenate((features_en,features_jp), axis = 1)
 
 	# --- Expanding the training data (dissimilar paris)
 	features_en_wrong = np.array(features_en)
-	np.random.shuffle((features_en_wrong))
+	np.random.shuffle(features_en_wrong)
 	c = np.all(features_en_wrong == features_en, axis=1)
 	print "C value =", c.sum() # check the duplicated amount
 
@@ -246,8 +225,8 @@ if __name__ == "__main__":
 
 	# --- Split into test data and training data --- #
 
-	X_train1, X_test, X_train2, X_train3_wrong, X_o = np.split(X, [2000, 3000, 5000, 9000])
-	y_train1, y_test, y_train2, y_train3_wrong, Y_o = np.split(y, [2000, 3000, 9000, 9000])
+	X_train1, X_test, X_train2, X_train3_wrong = np.split(X, [2000, 3000, 5000])
+	y_train1, y_test, y_train2, y_train3_wrong = np.split(y, [2000, 3000, 5000])
 
 	X_train = np.concatenate((X_train1, X_train2, X_train3_wrong), axis = 0)
 	y_train = np.concatenate((y_train1, y_train2, y_train3_wrong), axis = 0)
@@ -255,11 +234,13 @@ if __name__ == "__main__":
 	y_train_correct = np.concatenate((y_train1, y_train2), axis = 0)
 
 	# --- SVM Training --- #
+	start = time.clock()
+	# clf = svm.SVC()
+	clf = svm.SVC(kernel="rbf", gamma=0.001, C=1, probability=True)
 
-	clf = svm.SVC(kernel="rbf", gamma=0.001, C=100, probability=True)
 
-	# 在使用
-	standerlization = 0
+	# --- 归一化数据 --- #
+	standerlization = 1
 	if standerlization == 1:
 		scaler = preprocessing.StandardScaler().fit(X_train)
 		X_scaled = scaler.transform(X_train)
@@ -285,6 +266,14 @@ if __name__ == "__main__":
 		y_train_predict = clf.predict(X_train)
 
 
+	# clf = svm.SVC(kernel="linear", probability=True)
+	# clf.fit(X_train, y_train)
+	print "Time cost for SVC fitting is", time.clock() - start
+	# clf.score(X_train, y_train)
+	# clf.score(X_test, y_test)
+
+	# y_test_predict = clf.predict(X_test)
+	# y_train_predict = clf.predict(X_train)
 
 	print "classification report of TRAINING data:"
 	print(classification_report(y_train, y_train_predict))
@@ -292,45 +281,14 @@ if __name__ == "__main__":
 	print "classification report of TEST data:"
 	print(classification_report(y_test, y_test_predict))
 
-
-
-
-	# --- Prepare for a new independent evaluation balanced data --- #
-
-	df_pairs_evaluate = df_pairs.iloc[55000:60000]
-
-	df_pairs_evaluate['word2vec_en'] = df_pairs_evaluate['en_article'].apply(doc2vec_en)
-	df_pairs_evaluate['word2vec_jp'] = df_pairs_evaluate['jp_article'].apply(doc2vec_jp)
-
-	features_en_eva = doc2feature(corpus_en[60000:61000], tfidf_en, dictionary_en, model_en)
-	features_jp_eva = doc2feature(corpus_jp[60000:61000], tfidf_jp, dictionary_jp, model_jp)
-
-	features_merge_eva = np.concatenate((features_en_eva,features_jp_eva), axis = 1)
-
-	features_en_wrong_eva =  features_en[:1000]
-	# features_en_wrong_eva = np.array(features_en_eva)
-	# np.random.shuffle((features_en_wrong_eva))
-	# c = np.all(features_en_wrong_eva == features_en_eva, axis=1)
-	# print "C value =", c.sum() # check the duplicated amount
-
-	features_merge_wrong = np.concatenate((features_en_wrong_eva,features_jp_eva), axis = 1)
-
-	X_eva = np.concatenate((features_merge_eva, features_merge_wrong), axis = 0)
-	y_eva = np.concatenate((np.ones(len(features_merge_eva)), np.zeros(len(features_en_wrong_eva))), axis = 0)
-
-	y_eva_predict = clf.predict(X_eva)
-
-	print "classification report of TRAINING data:"
-	print(classification_report(y_eva, y_eva_predict))
-
-
-	# --- Evaluation for SVM --- #
-
 	y_test_proba = clf.predict_proba(X_test)
 	y_train_proba = clf.predict_proba(X_train)
 
+	# --- Evaluation for SVM --- #
+
+	start = time.clock()
 	# sim_results_train, rank_results_train = find_ranking(projection1_train, projection2_train)
 	sim_results_test, rank_results_test = find_ranking(X_test[:,:200] ,X_test[:,200:], clf)
-
+	print "Time cost for finding ranking", time.clock() - start
 
 	print pd.Series(rank_results_test).describe()

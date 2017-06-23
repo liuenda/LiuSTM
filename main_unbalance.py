@@ -1,172 +1,17 @@
 # coding: utf-8
-import pandas as pd
-from gensim.models import *
-import numpy as np
-import time
-from ast import literal_eval
-import lstm
 import random
 import pickle
+import time
+import pandas as pd
+import numpy as np
+import lstm_proj as lstm
 
-# TODO1: 文件输入en，jp的txt文件的时候，需要检查1. 是否行数一直 2. 是否有\n\n的问题出现
-# 目前是手动删除对应的\n\n行[已完成]
-
-# TODO1: 每次都要计算imilarity table效率太低了。1000行还可接受，但是更多行就不行了
-# 首先边计算边存储到一个dictionary去[已完成]
-
-epoch = 100
-maxlen = 0 # Default: 0 -> infinite
-k = 10
-wnl = 0
-dim = 200
-nan = np.empty(dim)
-counter = 0 
-start_time = time.time()
-dic_mapping = {}
-# np.random.seed(1234)
+maxlen = 0  # Default: 0 -> infinite
+epoch = 50
 random.seed(1234)
 
-dir_cluster_center = './data/cluster-skmeans/'
-model_name_en = "./data/model-en/W2Vmodle.bin"
-model_name_jp = "./data/model-jp/W2Vmodle.bin"
-dir_mapping = "./data/mapping/mapping_en_" + str(k) + ".csv"
 
-log_filename1 = "./log/output_unmatch_jp.log"
-output_unmatch = open(log_filename1,'w')
-
-if False:
-	# # For ALL
-	sample_size = ""
-	dir_txt_en = "./data/news/wo_empty_line_en" + sample_size + ".txt"
-	dir_txt_jp = "./data/news/wo_empty_line_jp" + sample_size + ".txt"
-
-else:
-	# #For sample
-	# #sample size
-	sample_size = "_1000"
-	dir_txt_en = "./data/news/wo_empty_line_en" + sample_size + ".txt"
-	dir_txt_jp = "./data/news/wo_empty_line_jp" + sample_size + ".txt"
-
-
-
-# Call mapping_word
-def mapping_article(article,model):
-	# start_time = time.time()
-	global counter
-	print counter
-	counter = counter + 1
-	tokens = article.split()
-	tokens_mapping=[mapping_word(word,model) for word in tokens]
-	# print "DEBUG: Finish 1 line-------------"
-	# print time.time() - start_time
-	return tokens_mapping
-
-# Call: get_vector
-# Find the nearest en-cluster for a given word
-def mapping_word(word,model):
-	# 1. get the center for each en-cluster
-	df_center_en=find_cluster_center(dir_cluster_center,'en')
-	
-	if word in dic_mapping:
-		cluster_number = dic_mapping[word]
-		# print "IN!"
-		return cluster_number
-	else:
-		# 2. find the word2vec expression
-		vec=get_vector(word,model)
-		# print "OUT----"
-		# print "DEBUG: ",vec
-		
-		if np.all(vec!=nan): 
-			# 3. calculate the similarity matrix
-			similarity_matrix_en = \
-				np.array(df_center_en).dot(vec) # ????? Have a check!
-			# print "DEBUG, similarity_matrix_en ="
-			# print "with shape of ", np.shape(similarity_matrix_en)
-			
-			# 4. Get the maximum one that can present this cluster
-			cluster_number=similarity_matrix_en.argmax()+1
-
-			# 5. add the mapping to the dictionary
-			dic_mapping[word] = cluster_number
-
-			return cluster_number
-		else:
-			print "Error: vec == NaN"
-			return None
-
-
-def get_vector(word,model):
-	word=word.rstrip() # remove all '\n' and '\r'
-	# word=word.lower()
-	# baseform=getVector.getBase(word,wnl)
-	# print "DEBUG: ",model['good']
-	# print "DEBUG: baseform= ", baseform
-	try:
-		vecW=model[word] #!!!Maybe the word is not existed
-	except Exception,e:
-		# info=''
-		# counter_NaN+=1 #increase 1 to NaN counter
-		# info+=repr(e)+"\n" #create log information
-		# logout.write(info) #write log information to log file				
-		#new 3.15: generate a useless list for deleting in the next stage
-		output_unmatch.write(word) # no \n is needed since the 
-		output_unmatch.write('\n')
-		print "---Warning: Word ["+word+"] Vector Not Found ---"
-		return nan
-	else:
-		# vecW=getVector.vecNorm(vecW) #Normalized the raw vector
-		# print "(the new length of the vector is:",LA.norm(vecW),")"
-		# info+=baseform+": OK!\n" #create log information
-		# logout.write(info) #write log information to log file
-		# fout.write(rawVoc) #add in 16/3/17
-		# good_list.append(rawVoc)
-		#append the new vector to the matrix
-		#if the vector is the first element in the matrix: 'good_vecs', reshape it
-		return vecW
-
-# Find the center of each cluster
-def find_cluster_center(cluster_centroid_dir,lang_name):
-	cluster_center_filename=cluster_centroid_dir + "centroid_" + lang_name + str(k) + ".csv"
-	df_cluster_center = pd.read_csv(cluster_center_filename,index_col=0)
-	# print "DEBUG: df_cluster_center is [" +  cluster_center_filename + "]" 
-	# print df_cluster_center
-	return df_cluster_center
-
-
-def map_to_jp_vector(vector_en, df_mapping):
-	result = []
-	for cluster_name_en in vector_en:
-		if cluster_name_en != None:
-			cluster_name_converted = df_mapping.iloc[cluster_name_en-1].mapping_parsed
-			result += list(cluster_name_converted)
-		else:
-			result = None
-	# print result
-	return result
-
-
-def evaluate_1(k):
-	xa = df_train_1['xa'][k]
-	return evaluate(xa)
-
-def evaluate(xa):
-	xa_0_result = df_train_1['xb'].apply(sls.predict_similarity,args=(xa,))
-	ranking = xa_0_result.rank(ascending = False)[k]
-	# print ranking
-	return ranking
-
-
-def evaluate_all(df):
-	df_result = df.xa.apply(evaluate)
-	return df_result
-
-
-# -----------------------Prepare the mapped Data----------------
-
-def prepare_trainig(dir_en, dir_jp):
-
-	# Read the saved mapping results:
+def prepare_train(dir_en, dir_jp):
 	df_en_mapping = pd.read_csv(dir_en)
 	df_jp_mapping = pd.read_csv(dir_jp)
 
@@ -178,164 +23,172 @@ def prepare_trainig(dir_en, dir_jp):
 	assert len(df_en_mapping) == len(df_jp_mapping)
 
 	# Convert mapping to list type and then concat to the a list
-	print "Merging the English and Japanes news dataframe"
-	df_train_1 = pd.concat([df_en_mapping, df_jp_mapping], axis = 1)
-	df_train_1['transformation_en'] = df_train_1.transformation_en.apply(literal_eval)
-	df_train_1['transformation_jp'] = df_train_1.transformation_jp.apply(literal_eval)
-	# df_train_1['similarity'] = pd.Series(np.ones(int(sample_size[1:]),))
-	df_train_1['similarity'] = pd.Series(np.ones(sample_size,)*5)
-	df_train_1['dis_similarity'] = pd.Series(np.ones(sample_size,)*1)
-
-
-
-	# prepare the multi-lingual cluster mapping
-	print "Read mapping file and convert it to tuple from string"
-	df_mapping = pd.read_csv(dir_mapping)
-	df_mapping['mapping_parsed'] = df_mapping.mapping.map(lambda x: literal_eval(x)) 
-
-	# Call map_to_jp_vector()
-	print "Mapping English clusters to Japanese clusters"
-	df_train_1['en2jp_projection'] = \
-		df_train_1['transformation_en'].apply(map_to_jp_vector,args=(df_mapping,))
+	print "Merging the English and Japanes news dataframe..."
+	df_train_1 = pd.concat([df_en_mapping, df_jp_mapping], axis=1)
+	df_train_1['similarity'] = pd.Series(np.ones(sample_size, ) * 5)
+	df_train_1['dis_similarity'] = pd.Series(np.ones(sample_size, ) * 1)
 
 	# Remove null line
-	print "Drop the null line"
-	df_train_1 = df_train_1.dropna(subset=['en2jp_projection'])
-
-	# Convert list of cluster number to a string 
-	print "Convert cluster names(list) to cluster namse(string)"
-	# 2017-2-20 搞错了，这里的xa应该不是transformation_en，而应该是transformation_jp 【重大错误】
-	# df_train_1[['xa','xb']] = df_train_1[['transformation_en','en2jp_projection']].applymap(lambda x:' '.join(str(v) for v in x))
-	df_train_1[['xa','xb']] = df_train_1[['transformation_jp','en2jp_projection']].applymap(lambda x:' '.join(str(v) for v in x))
-
+	print "Drop the null line..."
+	# df_train_1 = df_train_1.dropna(subset=['en_article'])
+	df_train_1 = df_train_1[df_train_1['en_article'] != '<NULL>']
 
 	# Expand the training data
-	xb_wrong = df_train_1.xb.iloc[random.sample(xrange(len(df_train_1)),len(df_train_1))]
-	xb_wrong.index = df_train_1.index
-	print (xb_wrong == df_train_1.xb).value_counts()
-	df_train_1['xb_wrong'] = xb_wrong
-
+	en_article_wrong = df_train_1.en_article.iloc[random.sample(xrange(len(df_train_1)), len(df_train_1))]
+	en_article_wrong.index = df_train_1.index
+	print (en_article_wrong == df_train_1.en_article).value_counts()
+	df_train_1['en_article_wrong'] = en_article_wrong
 
 	# Convert dateframe to list
-	train_1 = df_train_1[['xa','xb','similarity']].values.tolist()
-	train_2 = df_train_1[['xa','xb_wrong','dis_similarity']].values.tolist()
+	train_1 = df_train_1[['en_article', 'jp_article', 'similarity']].values.tolist()
+	train_2 = df_train_1[['en_article_wrong', 'jp_article', 'dis_similarity']].values.tolist()
 
 	return train_1, train_2, df_train_1
 
-# # Called by find_ranking
-# # Given 2 list of projection results, calculate there L1-norm similarity
-# def cal_similarity(a, b):
-# 	diff = np.linalg.norm(a - b, 1, axis=1)
-# 	sim = np.exp(-diff)
-# 	# len(diff)
-# 	return sim
+"""
+def word_embedding(a_sentence, model):
+	embedding = [get_vector(word, model) for word in a_sentence.split()]
+	return embedding
 
-# # Find the ranking results with respect to real pairs
-# def find_ranking(projection1, projection2):
-# 	sim_results = []
-# 	rank_results = []
-# 	for i, proj1 in enumerate(projection1):
-# 		sim = cal_similarity(proj1, projection2)
-# 		rank = pd.Series(sim).rank(ascending = False)[i]
-# 		sim_results.append(sim)
-# 		rank_results.append(rank)
-# 	return sim_results, rank_results
+
+def get_vector(word, model):
+	word = word.rstrip()  # remove all '\n' and '\r'
+	# word=word.lower()
+	# baseform=getVector.getBase(word,wnl)
+	# print "DEBUG: ",model['good']
+	# print "DEBUG: baseform= ", baseform
+	try:
+		vecW = model[word]  # !!!Maybe the word is not existed
+	except Exception, e:
+		# info=''
+		# counter_NaN+=1 #increase 1 to NaN counter
+		# info+=repr(e)+"\n" #create log information
+		# logout.write(info) #write log information to log file
+		# new 3.15: generate a useless list for deleting in the next stage
+		output_unmatch.write(word)  # no \n is needed since the
+		output_unmatch.write('\n')
+		print "---Warning: Word [" + word + "] Vector Not Found ---"
+		return nan
+	else:
+		# vecW=getVector.vecNorm(vecW) #Normalized the raw vector
+		# print "(the new length of the vector is:",LA.norm(vecW),")"
+		# info+=baseform+": OK!\n" #create log information
+		# logout.write(info) #write log information to log file
+		# fout.write(rawVoc) #add in 16/3/17
+		# good_list.append(rawVoc)
+		# append the new vector to the matrix
+		# if the vector is the first element in the matrix: 'good_vecs', reshape it
+		return vecW
+
+
+"""
+def read_vecs(lang_name):
+	filename = './data_baseline/good_vecs_' + lang_name + '.csv'
+	print "[INFO]Reading the word2vec vectors in ", lang_name, " from ", filename, "---"
+	df = pd.read_csv(filename)
+	return df
+
+
+
+
+"""
+Description:
+Let J*A=E, where A is the projection matrix
+Since A=inv(J.T*J)*J.T*E
+
+Here, in order to avoid null results of inverse matrix
+We impletment A = inv(J.T*J + la*I)*J.T*E
+
+Parameters:
+J: Matrix J
+E: Marix E
+
+Return:
+Projection matrix A, for J -> E
+"""
+def fit_projection(J, E):
+	JTJ = np.dot(J.T, J)
+
+	# iJTJ=np.linalg.inv(np.matrix(JTJ))
+	# print np.dot(JTJ,iJTJ) # This is now identical!!
+	# print np.linalg.det(JTJ)  # The determinant of det(JTJ) is 0!
+	# Which means there is no inverse matrix
+
+	# Solutions: Using linear ridge regression
+	la = 0.00001
+	dim = 200
+	I = np.eye(dim)
+	print "[DEBUG]", "inv(JTJ)*JTJ=I?: "
+	print "[DEBUG]", (JTJ + la * I).dot(np.linalg.inv(JTJ + la * I))
+	W = np.dot(np.linalg.inv(JTJ + la * I), J.T).dot(E)
+
+	return W
 
 
 if __name__ == "__main__":
 
-	#-----------------------------Loading-------------------------
+	df_E = read_vecs('en')
+	df_J = read_vecs('jp')
 
-	model_en = Word2Vec.load(model_name_en)
-	model_jp = Word2Vec.load(model_name_jp)
+	E = df_E.drop('en', axis=1)
+	J = df_J.drop('jp', axis=1)
 
-	# -----------------------Mapping Raw News Data----------------
-	# Read news data
-	df_en = pd.read_table(dir_txt_en, names=["en_article"])
-	df_jp = pd.read_table(dir_txt_jp, names=["jp_article"])
+	# Note: W is the projection from E to J
+	W = fit_projection(E, J)
 
-	# Mapping cluster name For Enlgish news
-	# and save the file 
-	if False:
-		print "Mapping cluster name For Enlgish news"
-		start_time = time.time()
-		df_en['transformation_en'] = \
-			df_en.en_article.apply(mapping_article,args=(model_en,))
-		df_en.to_csv("./data/mapping/en_mapped_" + str(k) + sample_size + ".csv",index=False)
-		print time.time() - start_time
+	# root_dir = "./pickles/"
+	# df_train_1 = pickle.load(open(root_dir + "df_train_1.p",'rb'))
+	# df_test_1 = pickle.load(open(root_dir + "df_test_1.p",'rb'))
 
-	# Mapping cluster name For Japanese news
-	# and save the file
-	if False:
-		print "Mapping cluster name For Japanese news"
-		start_time = time.time()
-		df_jp['transformation_jp'] = \
-			df_jp.jp_article.apply(mapping_article,args=(model_jp,))
-		df_jp.to_csv("./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv",index=False)
-		print time.time() - start_time
+	k = 10
+	input = 1
 
-	# -----------------Formatting the data------------------------
-
-	if False:
+	if input == 1:
 		# Prepare For the training data
-		dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
+		sample_size = "_1000"
+		dir_en = "./data/mapping/en_mapped_" + str(k) + sample_size + ".csv"
 		dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
-		train_1, train_2, df_train_1 = prepare_trainig(dir_en, dir_jp)
 
-		# Prepare For the testing data
+		# Prepare For the test data
 		sample_size = "_1k2k"
-		dir_en = "./data/mapping/en_mapped_"+str(k) + sample_size + ".csv"
-		dir_jp = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
-		test_1, test_2, df_test_1 = prepare_trainig(dir_en, dir_jp)
+		dir_en_test = "./data/mapping/en_mapped_" + str(k) + sample_size + ".csv"
+		dir_jp_test = "./data/mapping/jp_mapped_" + str(k) + sample_size + ".csv"
 
-		# ----save the prepared data into pickle-----------------------
-		root_dir = "pickles/"
-		with open(root_dir + "train_1.p", 'wb') as handle:
-		    pickle.dump(train_1, handle)
-		with open(root_dir + "train_2.p", 'wb') as handle:
-		    pickle.dump(train_2, handle)
-		with open(root_dir + "test_1.p", 'wb') as handle:
-		    pickle.dump(test_1, handle)
-		with open(root_dir + "test_2.p", 'wb') as handle:
-		    pickle.dump(test_2, handle)
-		with open(root_dir + "df_train_1.p", 'wb') as handle:
-		    pickle.dump(df_train_1, handle)
-		with open(root_dir + "df_test_1.p", 'wb') as handle:
-		    pickle.dump(df_test_1, handle)
+		train_1, train_2, df_train_1 = prepare_train(dir_en, dir_jp)
+		test_1, test_2, df_test_1 = prepare_train(dir_en_test, dir_jp_test)
 
-	else:
-		root_dir = "pickles/"
-		# ------load the exited prepared data from pickle---------------
-		train_1 = pickle.load(open(root_dir + "train_1.p",'rb'))
-		train_2 = pickle.load(open(root_dir + "train_2.p",'rb'))
-		test_1 = pickle.load(open(root_dir + "test_1.p",'rb'))
-		# test_2 = pickle.load(open(root_dir + "test_2.p",'rb')) 
-		df_train_1 = pickle.load(open(root_dir + "df_train_1.p",'rb'))
-		df_test_1 = pickle.load(open(root_dir + "df_test_1.p",'rb'))
+	if input == 2:
+		# split_line = 5000
+		# end_line = 6000
+		# Prepare For the training data
+		dir_en = "./data/news/en_news.csv"
+		dir_jp = "./data/news/jp_news.csv"
+
+		pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en, dir_jp)
+		train_1 = pairs_correct[0:2000] + pairs_correct[3000:5000]
+		test_1 = pairs_correct[2000:3000]
+
+		train_2 = pairs_wrong[0:2000] + pairs_wrong[3000:5000]
+	# test_2 = pairs_wrong[split_line:end_line]
 
 
-
-	#---------------------- 1 time training ------------------------
-	#-----------------------Load/Train the LSTM model---------------
-
+	# Expand the training data
 	train = train_1 + train_2
 
 	# True to training the data, False to laod the existed data
 	print "Now the maxlen =", maxlen
+	batchsize = 256
 	if True:
-		dir_file = "weights/201702281025_e1_1k1k_l0_b64.p"
+		dir_file = "weights/proj/20170326_e50_4000_b256"
 		print "Starting to training the model..., saving to", dir_file
-		sls=lstm.LSTM(dir_file, maxlen, load=False, training=True)
-		sls.train_lstm(train, epoch, train_1, test_1)
+		sls = lstm.LSTM(dir_file, W, maxlen=maxlen, load=False, training=True)
+		sls.train_lstm(train, epoch, train_1, test_1, batchsize=batchsize)
 		sls.save_model()
 	else:
-		dir_file = "weights/201702212157_e100_1k1k_l0.p"
+		dir_file = "weights/proj/20170320_e50_4000_b64.p"
 		print "NO Training. Load the existed model:", dir_file
-		sls=lstm.LSTM(dir_file, maxlen, load=True, training=False)
+		sls = lstm.LSTM(dir_file, W, maxlen=maxlen, load=True, training=False)
 
-
-	#--- New method to evaluate the results ------------------------
-	#--------------------Evaluate the results using new method------
 	if True:
 		print "Evaluate the model using fast estimation..."
 		projection1_train, projection2_train = sls.seq2vec(train_1)
@@ -346,41 +199,3 @@ if __name__ == "__main__":
 
 		print pd.Series(rank_results_train).describe()
 		print pd.Series(rank_results_test).describe()
-
-		## Save the training results to pickle
-		# root_dir = "pickles/"
-		# with open(root_dir + "rank_results_train_20161214.py", 'wb') as handle:
-		#     pickle.dump(train_1, handle)
-		# with open(root_dir + "train_1.p", 'wb') as handle:
-		#     pickle.dump(train_1, handle)
-
-	#----- multiple time trainings to find optimal parameters -------
-
-	# mse_maxlen = {}
-	# mse_maxlen_train = {}
-	# mse_maxlen_test = {}
-	# time_cost = {}
-
-	# def save_mse_maxlen(maxlen, sls):
-	# 	mse_maxlen[maxlen] = list(sls.mse)
-	# 	mse_maxlen_train[maxlen] = list(sls.mse_train)
-	# 	mse_maxlen_test[maxlen] = list(sls.mse_test)
-	# 	time_cost[maxlen] = sls.time_saver
-
-	# for length in range(50,1000,50):
-	# 	maxlen = length
-	# 	dir_file = "weights/e40_1k1k_l.p" + str(maxlen) + ".p"
-	# 	print "Starting to training the model..., saving to", dir_file
-	# 	sls = lstm.LSTM(dir_file, maxlen, load=False, training=True)
-	# 	sls.train_lstm(train, epoch, train_1, test_1)
-	# 	save_mse_maxlen(maxlen, sls)
-	# 	with open(root_dir + "mse_maxlen.p", 'wb') as handle:
-	# 		pickle.dump(mse_maxlen, handle)
-	# 	with open(root_dir + "mse_maxlen_train.p", 'wb') as handle:
-	# 		pickle.dump(mse_maxlen_train, handle)
-	# 	with open(root_dir + "mse_maxlen_test.p", 'wb') as handle:
-	# 		pickle.dump(mse_maxlen_test, handle)
-	# 	with open(root_dir + "time_cost.p", 'wb') as handle:
-	# 		pickle.dump(time_cost, handle)
-
-

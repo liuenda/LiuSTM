@@ -3,3 +3,5 @@
 /data/*
 /log/*
 *.pyc
+/news_data_2013/*
+/data_preparation/*.csv

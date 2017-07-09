@@ -206,33 +206,33 @@ def average_docment(document_embedding):
 def sum_docment(document_embedding):
     return np.sum(document_embedding, axis=0)
 
-def doc2feature(corpus, tfidf, dictionary, w2v):
-    doc_features = []
-    for index, doc_bof in enumerate(corpus):
-
-        if index % 1000 == 0:
-            print(index)
-
-        doc_tfidf = tfidf[doc_bof]
-
-        doc_feature = np.zeros((200,))
-
-        for (token_id, token_tfidf) in doc_tfidf:
-            token = dictionary.get(token_id, "[unknown-id]").encode("utf-8")
-            # if token in w2v:
-            if True:
-                token_w2v = w2v[token]
-            else:
-                print("No word:", token)
-                continue
-            doc_feature += token_w2v * token_tfidf
-
-        average = True
-        if average:
-            doc_feature = np.true_divide(doc_feature, len(doc_tfidf))
-        doc_features.append(doc_feature)
-
-    return doc_features
+# def doc2feature(corpus, tfidf, dictionary, w2v):
+#     doc_features = []
+#     for index, doc_bof in enumerate(corpus):
+#
+#         if index % 1000 == 0:
+#             print(index)
+#
+#         doc_tfidf = tfidf[doc_bof]
+#
+#         doc_feature = np.zeros((200,))
+#
+#         for (token_id, token_tfidf) in doc_tfidf:
+#             token = dictionary.get(token_id, "[unknown-id]").encode("utf-8")
+#             # if token in w2v:
+#             if True:
+#                 token_w2v = w2v[token]
+#             else:
+#                 print("No word:", token)
+#                 continue
+#             doc_feature += token_w2v * token_tfidf
+#
+#         average = True
+#         if average:
+#             doc_feature = np.true_divide(doc_feature, len(doc_tfidf))
+#         doc_features.append(doc_feature)
+#
+#     return doc_features
 
 
 def doc2vec_en(doc):

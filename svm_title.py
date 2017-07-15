@@ -1,3 +1,4 @@
+from __future__ import print_function
 # coding: utf-8
 
 """
@@ -17,10 +18,13 @@ from sklearn import linear_model
 from sklearn import svm
 from gensim.models import word2vec
 from sklearn import preprocessing
-import random
+from sklearn.linear_model import SGDClassifier
 import pickle
 import time
-
+import random
+from copy import deepcopy
+from multiprocessing import Process, Value, Array
+import multiprocessing
 
 base_path = "/home/M2015eliu/cas/2017.1.1~LiuSTM/"
 model_name_en = base_path + "data/model-en/W2Vmodle.bin"
@@ -36,6 +40,74 @@ random.seed(1234)
 
 
 """
+Quick way to find ranks for SVM using multiprocessing
+provdie the same results as the find_ranking
+"""
+# 并行计算
+# def find_ranking_quick(projection1, projection2, clf, n):
+step = 100
+
+def wrapper_find_ranking_quick(X_test_scaled, clf):
+	res = {}
+	queue = multiprocessing.Queue()
+	queue.put(res)
+
+	jobs = []
+	l_clf = []
+
+	n_jobs = 10
+	for i in range(n_jobs):
+
+		# # 1. A lower way but more memory
+		#     l_clf.append(deepcopy(clf))
+		#     jobs.append(Process(target=find_ranking_quick, args=((X_test_scaled[i*step:i*step+step,:200],
+		#                                                           X_test_scaled[:100,200:],
+		#                                                           l_clf[i], i, queue),)))
+
+		# 2. A faster way but more memory
+		jobs.append(Process(target=find_ranking_quick, args=((deepcopy(X_test_scaled[i * step:i * step + step, :200]),
+		                                                      deepcopy(X_test_scaled[:1000, 200:]),
+		                                                      deepcopy(clf), i, queue),)))
+	s = time.time()
+	for j in jobs:
+		j.start()
+
+	for j in jobs:
+		j.join()
+
+	print(time.time() - s)
+
+	return  queue
+
+
+def find_ranking_quick(args):
+	sim_results = []
+	rank_results = []
+	step = 100
+	projection1, projection2, clf, n, queue = args[0], args[1], args[2], args[3], args[4]
+	res = {}
+
+	# Iterate each of the ariticle from projection1 (999) as proj1
+	# Calculate the simialrity of proj1 with all ariticles in projection2 (999)
+	for i, proj1 in enumerate(projection1):
+		# print "Find answer for doc.", i
+		proj1_tile = np.tile(proj1, (len(projection2), 1))
+		features_test = np.concatenate((proj1_tile, projection2), axis=1)
+		sim = clf.predict_proba(features_test)[:, 1]
+		rank = pd.Series(sim).rank(ascending=False)[n * step + i]
+		sim_results.append(sim)
+		rank_results.append(rank)
+		print("Find answer for doc.", n * step + i, rank)
+		res[n * step + i] = rank
+
+	res_all = queue.get()
+	res_all.update(res)
+	queue.put(res_all)
+	return sim_results, rank_results
+
+
+
+"""
 Find the ranking results with respect to real pairs
 Defaulty, projection1 should be JP
 Whiile, projection2 should be EN->JP
@@ -47,13 +119,14 @@ def find_ranking(projection1, projection2, clf):
 	# Iterate each of the ariticle from projection1 (999) as proj1
 	# Calculate the simialrity of proj1 with all ariticles in projection2 (999)
 	for i, proj1 in enumerate(projection1):
-		print "Find answer for doc.", i
+		# print "Find answer for doc.", i
 		proj1_tile = np.tile(proj1, (len(projection2),1))
 		features_test = np.concatenate((proj1_tile, projection2), axis=1)
 		sim = clf.predict_proba(features_test)[:,1]
 		rank = pd.Series(sim).rank(ascending = False)[i]
 		sim_results.append(sim)
 		rank_results.append(rank)
+		print("Finish No.", i, rank, end="||")
 
 	# sim_results contains 999*999 similairty matrix
 	return sim_results, rank_results
@@ -90,7 +163,7 @@ def doc2feature(corpus, tfidf, dictionary, w2v):
             if token in w2v:
                 token_w2v = w2v[token]
             else:
-                print "No word:", token
+                # print "No word:", token
                 continue
             doc_feature += token_w2v * token_tfidf
 
@@ -265,7 +338,7 @@ if __name__ == "__main__":
 	features_en_wrong = np.array(features_en)
 	np.random.shuffle((features_en_wrong))
 	c = np.all(features_en_wrong == features_en, axis=1)
-	print "C value =", c.sum() # check the duplicated amount
+	print("C value =", c.sum()) # check the duplicated amount
 
 	features_merge_wrong = np.concatenate((features_en_wrong,features_jp), axis = 1)
 
@@ -331,10 +404,24 @@ if __name__ == "__main__":
 
 	# ------------------------------- SVM Training ------------------------------- #
 
-	clf = svm.SVC(kernel="rbf", gamma=0.001, C=100, probability=True)
+	method = "0"
+	if method == "sgd":
+		clf = SGDClassifier(loss="hinge", penalty="l2", n_jobs=8)
+		clf = SGDClassifier(loss="squared_hinge", penalty="l2", n_jobs=8)
+	else:
+		clf = svm.SVC(kernel="rbf", gamma=0.001, C=100, probability=True)
+		# clf = svm.SVC(kernel="linear1", gamma=0.001, C=100, probability=True)
+		# clf = svm.SVC(kernel="rbf", gamma=1, C=100, probability=False)
+		# clf = svm.SVC(kernel="rbf", gamma=0.001, C=1000, probability=False)
+		# clf = svm.SVC(kernel="rbf", gamma=0.001, C=100, probability=False)
+		# clf = svm.SVC(kernel="rbf", gamma=0.001, C=10, probability=False)
+		# clf = svm.SVC(kernel="rbf", gamma=0.001, C=1, probability=False)
+		# clf = svm.SVC(kernel="rbf", gamma=0.001, C=0.1, probability=False)
+		# clf = svm.SVC(kernel="rbf", gamma=0.001, C=0.01, probability=False)
+		# clf = svm.SVC(kernel="rbf", gamma=0.001, C=0.001, probability=False)
 
 	# 在使用
-	standerlization = 2
+	standerlization = 1
 	if standerlization == 1:
 		scaler = preprocessing.StandardScaler().fit(X_train)
 		X_scaled = scaler.transform(X_train)
@@ -343,8 +430,15 @@ if __name__ == "__main__":
 
 		y_test_predict = clf.predict(X_test_scaled)
 		y_train_predict = clf.predict(X_scaled)
+		print(clf)
+		print("classification report of TRAINING data:")
+		print(classification_report(y_train, y_train_predict))
 
-	if standerlization == 2:
+		print("classification report of TEST data:")
+		print(classification_report(y_test, y_test_predict))
+
+
+	elif standerlization == 2:
 		min_max_scaler = preprocessing.MinMaxScaler()
 		X_scaled = min_max_scaler.fit_transform(X_train)
 		X_test_scaled = min_max_scaler.transform(X_test)
@@ -352,6 +446,13 @@ if __name__ == "__main__":
 
 		y_test_predict = clf.predict(X_test_scaled)
 		y_train_predict = clf.predict(X_scaled)
+
+		print("classification report of TRAINING data:")
+		print(classification_report(y_train, y_train_predict))
+
+		print("classification report of TEST data:")
+		print(classification_report(y_test, y_test_predict))
+
 	else:
 		clf.fit(X_train, y_train)
 		# clf.score(X_train, y_train)
@@ -359,54 +460,85 @@ if __name__ == "__main__":
 		y_test_predict = clf.predict(X_test)
 		y_train_predict = clf.predict(X_train)
 
+		print("classification report of TRAINING data:")
+		print(classification_report(y_train, y_train_predict))
 
-
-	print "classification report of TRAINING data:"
-	print(classification_report(y_train, y_train_predict))
-
-	print "classification report of TEST data:"
-	print(classification_report(y_test, y_test_predict))
-
+		print("classification report of TEST data:")
+		print(classification_report(y_test, y_test_predict))
 
 
 
-
-	# --- Prepare for a new independent evaluation balanced data --- #
-
-	df_pairs_evaluate = df_pairs.iloc[55000:60000]
-
-	df_pairs_evaluate['word2vec_en'] = df_pairs_evaluate['en_article'].apply(doc2vec_en)
-	df_pairs_evaluate['word2vec_jp'] = df_pairs_evaluate['jp_article'].apply(doc2vec_jp)
-
-	features_en_eva = doc2feature(corpus_en[60000:61000], tfidf_en, dictionary_en, model_en)
-	features_jp_eva = doc2feature(corpus_jp[60000:61000], tfidf_jp, dictionary_jp, model_jp)
-
-	features_merge_eva = np.concatenate((features_en_eva,features_jp_eva), axis = 1)
-
-	features_en_wrong_eva =  features_en[:1000]
-	# features_en_wrong_eva = np.array(features_en_eva)
-	# np.random.shuffle((features_en_wrong_eva))
-	# c = np.all(features_en_wrong_eva == features_en_eva, axis=1)
-	# print "C value =", c.sum() # check the duplicated amount
-
-	features_merge_wrong = np.concatenate((features_en_wrong_eva,features_jp_eva), axis = 1)
-
-	X_eva = np.concatenate((features_merge_eva, features_merge_wrong), axis = 0)
-	y_eva = np.concatenate((np.ones(len(features_merge_eva)), np.zeros(len(features_en_wrong_eva))), axis = 0)
-
-	y_eva_predict = clf.predict(X_eva)
-
-	print "classification report of TRAINING data:"
-	print(classification_report(y_eva, y_eva_predict))
+	# print "classification report of TRAINING data:"
+	# print(classification_report(y_train, y_train_predict))
+	#
+	# print "classification report of TEST data:"
+	# print(classification_report(y_test, y_test_predict))
 
 
 	# --- Evaluation for SVM --- #
 
-	y_test_proba = clf.predict_proba(X_test)
-	y_train_proba = clf.predict_proba(X_train)
 
 	# sim_results_train, rank_results_train = find_ranking(projection1_train, projection2_train)
-	sim_results_test, rank_results_test = find_ranking(X_test[:,:200] ,X_test[:,200:], clf)
+	if standerlization == 0:
+		# sim_results_test, rank_results_test = find_ranking(X_test[:1000,:200] ,X_test[:1000,200:], clf)
+		q = wrapper_find_ranking_quick(X_test, clf)
+		dic_rank_results_test = q.get()
+
+		# y_test_proba = clf.predict_proba(X_test)
+		# y_train_proba = clf.predict_proba(X_train)
+	else:
+		# sim_results_test, rank_results_test = find_ranking(X_test[:1000,:200] ,X_test[:1000,200:], clf)
+		q = wrapper_find_ranking_quick(X_test_scaled, clf)
+		dic_rank_results_test = q.get()
+		# y_test_proba = clf.predict_proba(X_test)
+		# y_test_proba = clf.predict_proba(X_test_scaled)
+		# y_train_proba = clf.predict_proba(X_scaled)
+
+	rank_results_test = [dic_rank_results_test[k] for k in sorted(dic_rank_results_test)]
+
+	print(pd.Series(rank_results_test).describe())
+	print("TOP1", (pd.Series(rank_results_test)<=1).sum())
+	print("TOP5", (pd.Series(rank_results_test)<=5).sum())
+	print("TOP10", (pd.Series(rank_results_test)<=10).sum())
 
 
-	print pd.Series(rank_results_test).describe()
+
+	# # --- Prepare for a new independent evaluation balanced data --- #
+	#
+	# df_pairs_evaluate = df_pairs.iloc[55000:60000]
+	#
+	# df_pairs_evaluate['word2vec_en'] = df_pairs_evaluate['en_article'].apply(doc2vec_en)
+	# df_pairs_evaluate['word2vec_jp'] = df_pairs_evaluate['jp_article'].apply(doc2vec_jp)
+	#
+	# features_en_eva = doc2feature(corpus_en[60000:61000], tfidf_en, dictionary_en, model_en)
+	# features_jp_eva = doc2feature(corpus_jp[60000:61000], tfidf_jp, dictionary_jp, model_jp)
+	#
+	# features_merge_eva = np.concatenate((features_en_eva,features_jp_eva), axis = 1)
+	#
+	# features_en_wrong_eva =  features_en[:1000]
+	# # features_en_wrong_eva = np.array(features_en_eva)
+	# # np.random.shuffle((features_en_wrong_eva))
+	# # c = np.all(features_en_wrong_eva == features_en_eva, axis=1)
+	# # print "C value =", c.sum() # check the duplicated amount
+	#
+	# features_merge_wrong = np.concatenate((features_en_wrong_eva,features_jp_eva), axis = 1)
+	#
+	# X_eva = np.concatenate((features_merge_eva, features_merge_wrong), axis = 0)
+	# y_eva = np.concatenate((np.ones(len(features_merge_eva)), np.zeros(len(features_en_wrong_eva))), axis = 0)
+	#
+	# y_eva_predict = clf.predict(X_eva)
+	#
+	# print "classification report of TRAINING data:"
+	# print(classification_report(y_eva, y_eva_predict))
+
+
+	# # --- Evaluation for SVM --- #
+	#
+	# y_test_proba = clf.predict_proba(X_test)
+	# y_train_proba = clf.predict_proba(X_train)
+	#
+	# # sim_results_train, rank_results_train = find_ranking(projection1_train, projection2_train)
+	# sim_results_test, rank_results_test = find_ranking(X_test[:,:200] ,X_test[:,200:], clf)
+	#
+	#
+	# print pd.Series(rank_results_test).describe()

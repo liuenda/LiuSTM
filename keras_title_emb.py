@@ -32,26 +32,12 @@ model_en = word2vec.Word2Vec.load(model_name_en)
 model_jp = word2vec.Word2Vec.load(model_name_jp)
 
 
-maxlen = 20 # Default: 0 -> infinite
-epoch = 10
-dim_lstm = 200
-dim_1 = 400
-dim_2 = 100
-dropout_rate = 0.0
-bias_y = -1
-loss_function = "mse"
-mode = "reg"
-print "maxlen", maxlen, "epoch", epoch, "dim_lstm", dim_lstm,"dim_Dense", dim_1, dim_2
-print "dropout_rate", dropout_rate
-p_activation = ["relu", "relu"]
-print "Activation function:", p_activation
-print "bias of y:", bias_y
-print "loss_function:", loss_function
-print "------------------------------"
+maxlen = 50 # Default: 0 -> infinite
+epoch = 50
 random.seed(1234)
 
 " Padding the sequence"
-def padding(sequence, maxlen=maxlen, padding_value=0.0):
+def padding(sequence, maxlen=50, padding_value=0.0):
     np_sequance = np.array(sequence)
     # print(np_sequance.shape)
     if np_sequance.shape[0] < maxlen:
@@ -110,21 +96,18 @@ def find_ranking_quick(projection1, projection2, dlmodel):
     input_2 = Input(shape=(maxlen,200), dtype='float32', name='main_input_2')
 
     # LSTM layer
-    lstm_out_1 = LSTM(dim_lstm, go_backwards = True)(input_1)
-    lstm_out_2 = LSTM(dim_lstm, go_backwards = True)(input_2)
+    lstm_out_1 = LSTM(50, go_backwards = True)(input_1)
+    lstm_out_2 = LSTM(50, go_backwards = True)(input_2)
 
     # Model definition
     model_1 = Model(input=[input_1, input_2], output=[lstm_out_1, lstm_out_2])
 
     # Compile the model
-    if mode == "reg":
-        model_1.compile(optimizer='adam', loss=loss_function)
-    else:
-        model_1.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model_1.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
     # model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
     # Show the structure of the model
-    # print model_1.summary()
+    print model_1.summary()
 
     # Set the weights
     model_1.layers[2].set_weights(dlmodel.layers[2].get_weights())
@@ -136,37 +119,30 @@ def find_ranking_quick(projection1, projection2, dlmodel):
     # ---- Prepare the model_2 ----
 
     # Input layer
-    input_1 = Input(shape=(dim_lstm,), dtype='float32', name='lstm1')
-    input_2 = Input(shape=(dim_lstm,), dtype='float32', name='lsmt2')
+    input_1 = Input(shape=(50,), dtype='float32', name='lstm1')
+    input_2 = Input(shape=(50,), dtype='float32', name='lsmt2')
 
     # Merge layer
     merged_vector = keras.layers.concatenate([input_1, input_2], axis=-1)
 
     # (Dense 1) * 3
-    x1 = Dense(dim_1, activation=p_activation[0])(merged_vector)
-    x1 = Dropout(dropout_rate)(x1)
+    x1 = Dense(100, activation='relu')(merged_vector)
+    x1 = Dropout(0.5)(x1)
 
-    x1 = Dense(dim_2, activation=p_activation[1])(x1)
-    x1 = Dropout(dropout_rate)(x1)
+    x1 = Dense(50, activation='relu')(x1)
+    x1 = Dropout(0.5)(x1)
 
-    # main_output = Dense(1, activation='sigmoid', name='main_output')(x1)
-    if mode == "reg":
-        main_output = Dense(1, name='main_output')(x1)
-        # main_output = Dense(1, activation="sigmoid", name='main_output')(x1)
-    else:
-        main_output = Dense(2, activation='softmax', name='main_output')(x1)
+    main_output = Dense(1, activation='sigmoid', name='main_output')(x1)
 
     # Model definition
     model_2 = Model(input=[input_1, input_2], output=main_output)
 
     # Compile the model
-    if mode == "reg":
-        model_2.compile(optimizer='adam', loss=loss_function)
-    else:
-        model_2.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    model_2.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    # model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
     # Show the structure of the model
-    # print model_2.summary()
+    print model_2.summary()
 
     # Find the real projection
     v3 = model_2.predict([v1, v2])
@@ -182,7 +158,7 @@ def find_ranking_quick(projection1, projection2, dlmodel):
     # Iterate each of the ariticle from projection1 (999) as proj1
     # Calculate the simialrity of proj1 with all ariticles in projection2 (999)
     for i, proj1 in enumerate(projection1):
-        # print("Find answer for doc.", i)
+        print("Find answer for doc.", i)
         proj1_tile = np.tile(proj1, (len(projection2), 1))
         sim = model_2.predict([proj1_tile, projection2])[:,0]
         rank = pd.Series(sim).rank(ascending = False)[i]
@@ -293,14 +269,14 @@ def doc2vec_jp(doc):
 
 
 # def prepare_train(dir_en, dir_jp):
-def prepare_train(dir_en_jp, start=0, end=5000):
+def prepare_train(dir_en_jp):
 
     # df_en_mapping = pd.read_csv(dir_en)
     # df_jp_mapping = pd.read_csv(dir_jp)
 
     df_en_jp = pd.read_csv(dir_en_jp, names=["en_article","jp_article"], header=0)
-    df_en_mapping = df_en_jp[["en_article"]].iloc[start:end]
-    df_jp_mapping = df_en_jp[["jp_article"]].iloc[start:end]
+    df_en_mapping = df_en_jp[["en_article"]].iloc[0:5000]
+    df_jp_mapping = df_en_jp[["jp_article"]].iloc[0:5000]
 
     print("Reading english Data:", len(df_en_mapping))
     print("Reading english Data:", len(df_jp_mapping))
@@ -405,11 +381,7 @@ if __name__ == "__main__":
     # Prepare the final training and test data
     X_1 = np.concatenate((features_en_1, features_en_0), axis = 0)
     X_2 = np.concatenate((features_jp_1, features_jp_1), axis = 0)
-    if mode == "reg":
-        y = np.concatenate((np.ones(len(features_en_1)), np.zeros(len(features_en_0))+bias_y), axis = 0)
-        # y = np.concatenate((np.ones(len(features_en_1)), np.zeros(len(features_en_0))), axis = 0)
-    else:
-        y = np.concatenate((np.ones(len(features_en_1)), np.zeros(len(features_en_0))), axis = 0)
+    y = np.concatenate((np.ones(len(features_en_1)), np.zeros(len(features_en_0))), axis = 0)
 
     # --- Split into test data and training data --- #
 
@@ -426,11 +398,7 @@ if __name__ == "__main__":
     # --- Generate balanced test data --- #
     X1_test = np.concatenate((X1_test_1, X1_test_0), axis=0)
     X2_test = np.concatenate((X2_test_1, X2_test_0), axis=0)
-    if mode == "reg":
-        y_test = np.concatenate((np.ones(len(X1_test_1)), np.zeros(len(X1_test_0))+bias_y), axis = 0)
-        # y_test = np.concatenate((np.ones(len(X1_test_1)), np.zeros(len(X1_test_0))), axis = 0)
-    else:
-        y_test = np.concatenate((np.ones(len(X1_test_1)), np.zeros(len(X1_test_0))), axis = 0)
+    y_test = np.concatenate((np.ones(len(X1_test_1)), np.zeros(len(X1_test_0))), axis = 0)
 
 
     # ---- Parallel Model ---- #
@@ -442,55 +410,37 @@ if __name__ == "__main__":
     # LSTM layer
     # lstm_out_1 = LSTM(50)(input_1)
     # lstm_out_2 = LSTM(50)(input_2)
-    lstm_out_1 = LSTM(dim_lstm, go_backwards = True)(input_1)
-    lstm_out_2 = LSTM(dim_lstm, go_backwards = True)(input_2)
+    lstm_out_1 = LSTM(50, go_backwards = True)(input_1)
+    lstm_out_2 = LSTM(50, go_backwards = True)(input_2)
 
     # Merge layer
     merged_vector = keras.layers.concatenate([lstm_out_1, lstm_out_2], axis=-1)
 
     # (Dense 1) * 3
-    x1 = Dense(dim_1, activation=p_activation[0])(merged_vector)
-    x1 = Dropout(dropout_rate)(x1)
+    x1 = Dense(100, activation='relu')(merged_vector)
+    x1 = Dropout(0.5)(x1)
 
     # x1 = Dense(100, activation='relu')(x1)
     # x1 = Dropout(0.5)(x1)
 
-    x1 = Dense(dim_2, activation=p_activation[1])(x1)
-    x1 = Dropout(dropout_rate)(x1)
+    x1 = Dense(50, activation='relu')(x1)
+    x1 = Dropout(0.5)(x1)
 
-    if mode == "reg":
-        main_output = Dense(1, name='main_output')(x1)
-        # main_output = Dense(1, activation="sigmoid", name='main_output')(x1)
-    else:
-        main_output = Dense(2, activation='softmax', name='main_output')(x1)
+    main_output = Dense(1, activation='sigmoid', name='main_output')(x1)
 
     # Model definition
     model_lstm2 = Model(input=[input_1, input_2], output=main_output)
 
     # Compile the model
-    # model_lstm2.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    model_lstm2.compile(optimizer='adam', loss=loss_function)
+    model_lstm2.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
     # model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
     # Show the structure of the model
     print model_lstm2.summary()
 
     # Fit the training model
-    for i in range(epoch):
-        hist = model_lstm2.fit([X1_train, X2_train], [y_train],
-                           validation_data=([X1_test, X2_test], y_test),
-                           epochs=i+1,
-                           batch_size=32,
-                           initial_epoch=i)
-
-        sim_results_test, rank_results_test = find_ranking_quick(X1_test_1,
-                                                                 X2_test_1,
-                                                                 model_lstm2)
-
-        # Evaluation
-        print "TOP1", (pd.Series(rank_results_test) <= 1).sum()
-        print "TOP5", (pd.Series(rank_results_test) <= 5).sum()
-        print "TOP10", (pd.Series(rank_results_test) <= 10).sum()
+    hist = model_lstm2.fit([X1_train, X2_train], [y_train],
+                           validation_data=([X1_test, X2_test], y_test), epochs=10, batch_size=32)
 
     # # Save the history and the model
     # code = "b"
@@ -505,11 +455,9 @@ if __name__ == "__main__":
     # 想办法保存lstm以后的映射 --- #
 
     # --- find ranking --- #
-    # sim_results_test_slow, rank_results_test_slow = find_ranking(X1_test_1, X2_test_1, model_lstm2)
+    sim_results_test_slow, rank_results_test_slow = find_ranking(X1_test_1, X2_test_1, model_lstm2)
     sim_results_test, rank_results_test = find_ranking_quick(X1_test_1, X2_test_1, model_lstm2)
-    print "TOP1", (pd.Series(rank_results_test) <= 1).sum()
-    print "TOP5", (pd.Series(rank_results_test) <= 5).sum()
-    print "TOP10", (pd.Series(rank_results_test) <= 10).sum()
+
 
     # # --- Prepare for a new independent evaluation balanced data --- #
     #

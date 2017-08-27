@@ -1,5 +1,5 @@
-from __future__ import print_function
 # coding: utf-8
+from __future__ import print_function
 
 """
 created on 2017/05/11
@@ -8,7 +8,7 @@ created on 2017/05/11
 
 import numpy as np
 import pandas as pd
-
+import sys
 from sklearn import cross_validation
 from sklearn.metrics import classification_report
 from gensim import corpora, models, similarities
@@ -34,10 +34,12 @@ model_en = word2vec.Word2Vec.load(model_name_en)
 model_jp = word2vec.Word2Vec.load(model_name_jp)
 
 
-maxlen = 0 # Default: 0 -> infinite
-epoch = 50
+average = False # 这里对于文章分类来说必须是False，可以稍微增加一些精度
+print("average=", average)
 random.seed(1234)
 
+train_start = 0
+train_end = 5000
 
 """
 Quick way to find ranks for SVM using multiprocessing
@@ -97,7 +99,9 @@ def find_ranking_quick(args):
 		rank = pd.Series(sim).rank(ascending=False)[n * step + i]
 		sim_results.append(sim)
 		rank_results.append(rank)
-		print("Find answer for doc.", n * step + i, rank)
+		# print("Find answer for doc.", n * step + i, rank, end="||", flush=True)
+		sys.stdout.write("Doc." + str(n * step + i) + ": " + str(rank) + "||")
+		sys.stdout.flush()
 		res[n * step + i] = rank
 
 	res_all = queue.get()
@@ -167,7 +171,6 @@ def doc2feature(corpus, tfidf, dictionary, w2v):
                 continue
             doc_feature += token_w2v * token_tfidf
 
-        average = True
         if average:
             doc_feature = np.true_divide(doc_feature, len(doc_tfidf))
         doc_features.append(doc_feature)
@@ -208,14 +211,14 @@ def doc2feature(corpus, tfidf, dictionary, w2v):
 #
 
 # def prepare_train(dir_en, dir_jp):
-def prepare_train(dir_en_jp):
+def prepare_train(dir_en_jp, start=None, end=None):
 
 	# df_en_mapping = pd.read_csv(dir_en)
 	# df_jp_mapping = pd.read_csv(dir_jp)
 
 	df_en_jp = pd.read_csv(dir_en_jp, names=["en_article","jp_article"], header=0)
-	df_en_mapping = df_en_jp[["en_article"]].iloc[0:5000]
-	df_jp_mapping = df_en_jp[["jp_article"]].iloc[0:5000]
+	df_en_mapping = df_en_jp[["en_article"]].iloc[start:end]
+	df_jp_mapping = df_en_jp[["jp_article"]].iloc[start:end]
 
 	print("Reading english Data:", len(df_en_mapping))
 	print("Reading english Data:", len(df_jp_mapping))
@@ -278,7 +281,8 @@ if __name__ == "__main__":
 		dir_en_jp = base_path + "data_preparation/2014_cleaned_jp_en.csv"
 
 		# pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en, dir_jp)
-		pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en_jp)
+		# pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en_jp)
+		_1, _2, df_pairs = prepare_train(dir_en_jp)
 
 		# train_1 = pairs_correct[0:2000] + pairs_correct[3000:5000]
 		# test_1 = pairs_correct[2000:3000]
@@ -292,7 +296,8 @@ if __name__ == "__main__":
 
 	# --- Apply the word2vec model to the data sets --- #
 
-	df_pairs_sample = df_pairs.iloc[0:5000]
+	df_pairs_sample = df_pairs.iloc[train_start:train_end]
+	print("Using the the data where start=", train_start, ", end",train_end )
 
 	# df_pairs_sample['word2vec_en'] = df_pairs_sample['en_article'].apply(doc2vec_en)
 	# df_pairs_sample['word2vec_jp'] = df_pairs_sample['jp_article'].apply(doc2vec_jp)
@@ -302,17 +307,17 @@ if __name__ == "__main__":
 
 	# --- Find tf-idf * word2vec features --- #
 
-    #  For English text:
-    # texts_en = [doc.split() for doc in list(df_pairs_sample["en_article"])]
-	texts_en = [doc.split() for doc in list(df_pairs["en_article"])]
-	dictionary_en = corpora.Dictionary(texts_en)
+	#  For English text:
+	texts_en = [doc.split() for doc in list(df_pairs_sample["en_article"])]
+	texts_en_all = [doc.split() for doc in list(df_pairs["en_article"])]
+	dictionary_en = corpora.Dictionary(texts_en_all)
 	corpus_en = [dictionary_en.doc2bow(text) for text in texts_en]
 	tfidf_en = models.TfidfModel(corpus_en)
 
 	#  For Japanese text:
-	# texts_jp = [doc.split() for doc in list(df_pairs_sample["jp_article"])]
-	texts_jp = [doc.split() for doc in list(df_pairs["jp_article"])]
-	dictionary_jp = corpora.Dictionary(texts_jp)
+	texts_jp = [doc.split() for doc in list(df_pairs_sample["jp_article"])]
+	texts_jp_all = [doc.split() for doc in list(df_pairs["jp_article"])]
+	dictionary_jp = corpora.Dictionary(texts_jp_all)
 	corpus_jp = [dictionary_jp.doc2bow(text) for text in texts_jp]
 	tfidf_jp = models.TfidfModel(corpus_jp)
 
@@ -501,15 +506,17 @@ if __name__ == "__main__":
 	print("TOP5", (pd.Series(rank_results_test)<=5).sum())
 	print("TOP10", (pd.Series(rank_results_test)<=10).sum())
 
+	# def test_rank(start, end, ):
+	# 	pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en_jp, start, end)
+	# 	df_pairs_sample = df_pairs.iloc[0:5000]
 
 
 	# # --- Prepare for a new independent evaluation balanced data --- #
-	#
-	# df_pairs_evaluate = df_pairs.iloc[55000:60000]
-	#
+
+
 	# df_pairs_evaluate['word2vec_en'] = df_pairs_evaluate['en_article'].apply(doc2vec_en)
 	# df_pairs_evaluate['word2vec_jp'] = df_pairs_evaluate['jp_article'].apply(doc2vec_jp)
-	#
+
 	# features_en_eva = doc2feature(corpus_en[60000:61000], tfidf_en, dictionary_en, model_en)
 	# features_jp_eva = doc2feature(corpus_jp[60000:61000], tfidf_jp, dictionary_jp, model_jp)
 	#
@@ -530,6 +537,53 @@ if __name__ == "__main__":
 	#
 	# print "classification report of TRAINING data:"
 	# print(classification_report(y_eva, y_eva_predict))
+
+	print("Using the new test data to evaluate.......")
+	df_pairs_evaluate = df_pairs.iloc[50000:55000:5]
+
+	texts_en_new = [doc.split() for doc in list(df_pairs_evaluate["en_article"])]
+	corpus_en_new = [dictionary_en.doc2bow(text) for text in texts_en_new]
+
+	texts_jp_new = [doc.split() for doc in list(df_pairs_evaluate["jp_article"])]
+	corpus_jp_new = [dictionary_jp.doc2bow(text) for text in texts_jp_new]
+
+	features_en_new = doc2feature(corpus_en_new[:1000], tfidf_en, dictionary_en, model_en)
+	features_jp_new = doc2feature(corpus_jp_new[:1000], tfidf_jp, dictionary_jp, model_jp)
+
+	features_merge_1_new = np.concatenate((features_en_new, features_jp_new), axis=1)
+
+	X_test_scaled_1_new = scaler.transform(features_merge_1_new)
+	# X_test_scaled_1_new = features_merge_1_new
+
+	# sim_results_test, rank_results_test = find_ranking(X_test[:1000,:200] ,X_test[:1000,200:], clf)
+	q = wrapper_find_ranking_quick(X_test_scaled_1_new, clf)
+	dic_rank_results_test_new = q.get()
+
+	rank_results_test_new = [dic_rank_results_test_new[k] for k in sorted(dic_rank_results_test_new)]
+
+	print(pd.Series(rank_results_test_new).describe())
+	print("TOP1", (pd.Series(rank_results_test_new) <= 1).sum())
+	print("TOP5", (pd.Series(rank_results_test_new) <= 5).sum())
+	print("TOP10", (pd.Series(rank_results_test_new) <= 10).sum())
+
+
+
+	# --- Expanding the training data (dissimilar paris)
+	features_en_wrong_new = np.array(features_en_new)
+	np.random.shuffle((features_en_wrong_new))
+	c = np.all(features_en_wrong_new == features_en_new, axis=1)
+	print "C value =", c.sum() # check the duplicated amount
+
+	features_merge_wrong_new = np.concatenate((features_en_wrong_new,features_jp_new), axis = 1)
+
+	# --- Prepare the final training and test data --- #
+	X_test_new = np.concatenate((features_merge_1_new, features_merge_wrong_new), axis = 0)
+	X_test_scaled_new = scaler.transform(X_test_new)
+
+	y_test_predict_new = clf.predict(X_test_scaled_new)
+	print "classification report of TEST data:"
+	print(classification_report(y_test, y_test_predict_new))
+
 
 
 	# # --- Evaluation for SVM --- #

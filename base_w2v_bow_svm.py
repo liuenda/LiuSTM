@@ -19,7 +19,11 @@ from sklearn import preprocessing
 import random
 import pickle
 import time
+import sys
 
+from copy import deepcopy
+from multiprocessing import Process, Value, Array
+import multiprocessing
 
 model_name_en = "./data/model-en/W2Vmodle.bin"
 model_name_jp = "./data/model-jp/W2Vmodle.bin"
@@ -27,11 +31,70 @@ model_name_jp = "./data/model-jp/W2Vmodle.bin"
 model_en = word2vec.Word2Vec.load(model_name_en)
 model_jp = word2vec.Word2Vec.load(model_name_jp)
 
-
-maxlen = 0 # Default: 0 -> infinite
-epoch = 50
+average = False # 这里对于文章分类来说必须是False，否则就会严重影响精度
 random.seed(1234)
+step = 100
+print("average=", average)
 
+def wrapper_find_ranking_quick(X_test_scaled, clf):
+	res = {}
+	queue = multiprocessing.Queue()
+	queue.put(res)
+
+	jobs = []
+	l_clf = []
+
+	n_jobs = 10
+	for i in range(n_jobs):
+
+		# # 1. A lower way but more memory
+		#     l_clf.append(deepcopy(clf))
+		#     jobs.append(Process(target=find_ranking_quick, args=((X_test_scaled[i*step:i*step+step,:200],
+		#                                                           X_test_scaled[:100,200:],
+		#                                                           l_clf[i], i, queue),)))
+
+		# 2. A faster way but more memory
+		jobs.append(Process(target=find_ranking_quick, args=((deepcopy(X_test_scaled[i * step:i * step + step, :200]),
+		                                                      deepcopy(X_test_scaled[:1000, 200:]),
+		                                                      deepcopy(clf), i, queue),)))
+	s = time.time()
+	for j in jobs:
+		j.start()
+
+	for j in jobs:
+		j.join()
+
+	print(time.time() - s)
+
+	return  queue
+
+
+def find_ranking_quick(args):
+	sim_results = []
+	rank_results = []
+	step = 100
+	projection1, projection2, clf, n, queue = args[0], args[1], args[2], args[3], args[4]
+	res = {}
+
+	# Iterate each of the ariticle from projection1 (999) as proj1
+	# Calculate the simialrity of proj1 with all ariticles in projection2 (999)
+	for i, proj1 in enumerate(projection1):
+		# print "Find answer for doc.", i
+		proj1_tile = np.tile(proj1, (len(projection2), 1))
+		features_test = np.concatenate((proj1_tile, projection2), axis=1)
+		sim = clf.predict_proba(features_test)[:, 1]
+		rank = pd.Series(sim).rank(ascending=False)[n * step + i]
+		sim_results.append(sim)
+		rank_results.append(rank)
+		# print("Find answer for doc.", n * step + i, rank, end="||", flush=True)
+		sys.stdout.write("Doc." + str(n * step + i) + ": " + str(rank) + "||")
+		sys.stdout.flush()
+		res[n * step + i] = rank
+
+	res_all = queue.get()
+	res_all.update(res)
+	queue.put(res_all)
+	return sim_results, rank_results
 
 """
 Find the ranking results with respect to real pairs
@@ -92,7 +155,7 @@ def doc2feature(corpus, tfidf, dictionary, w2v):
                 continue
             doc_feature += token_w2v * token_tfidf
 
-        average = True
+        # average = False
         if average:
             doc_feature = np.true_divide(doc_feature, len(doc_tfidf))
         doc_features.append(doc_feature)
@@ -199,17 +262,17 @@ if __name__ == "__main__":
 
 	# --- Find tf-idf * word2vec features --- #
 
-    #  For English text:
-    # texts_en = [doc.split() for doc in list(df_pairs_sample["en_article"])]
-	texts_en = [doc.split() for doc in list(df_pairs["en_article"])]
-	dictionary_en = corpora.Dictionary(texts_en)
+	#  For English text:
+	texts_en = [doc.split() for doc in list(df_pairs_sample["en_article"])]
+	texts_en_all = [doc.split() for doc in list(df_pairs["en_article"])]
+	dictionary_en = corpora.Dictionary(texts_en_all)
 	corpus_en = [dictionary_en.doc2bow(text) for text in texts_en]
 	tfidf_en = models.TfidfModel(corpus_en)
 
 	#  For Japanese text:
-	# texts_jp = [doc.split() for doc in list(df_pairs_sample["jp_article"])]
-	texts_jp = [doc.split() for doc in list(df_pairs["jp_article"])]
-	dictionary_jp = corpora.Dictionary(texts_jp)
+	texts_jp = [doc.split() for doc in list(df_pairs_sample["jp_article"])]
+	texts_jp_all = [doc.split() for doc in list(df_pairs["jp_article"])]
+	dictionary_jp = corpora.Dictionary(texts_jp_all)
 	corpus_jp = [dictionary_jp.doc2bow(text) for text in texts_jp]
 	tfidf_jp = models.TfidfModel(corpus_jp)
 
@@ -246,13 +309,18 @@ if __name__ == "__main__":
 
 	# --- Split into test data and training data --- #
 
-	X_train1, X_test, X_train2, X_train3_wrong, X_o = np.split(X, [2000, 3000, 5000, 9000])
-	y_train1, y_test, y_train2, y_train3_wrong, Y_o = np.split(y, [2000, 3000, 9000, 9000])
+	X_train1, X_test1, X_train2, X_train3_wrong, X_test2_wrong = np.split(X, [2000, 3000, 5000, 9000])
+	y_train1, y_test1, y_train2, y_train3_wrong, y_test2_wrong = np.split(y, [2000, 3000, 9000, 9000])
 
 	X_train = np.concatenate((X_train1, X_train2, X_train3_wrong), axis = 0)
 	y_train = np.concatenate((y_train1, y_train2, y_train3_wrong), axis = 0)
 	X_train_correct = np.concatenate((X_train1, X_train2), axis = 0)
 	y_train_correct = np.concatenate((y_train1, y_train2), axis = 0)
+
+	X_test = np.concatenate((X_test1, X_test2_wrong), axis = 0)
+	y_test = np.concatenate((y_test1, y_test2_wrong), axis = 0)
+	X_test_correct = X_test1
+	y_test_correct = y_test1
 
 	# --- SVM Training --- #
 
@@ -261,6 +329,7 @@ if __name__ == "__main__":
 	# 在使用
 	standerlization = 0
 	if standerlization == 1:
+		print("Usinge the standardScaler")
 		scaler = preprocessing.StandardScaler().fit(X_train)
 		X_scaled = scaler.transform(X_train)
 		X_test_scaled = scaler.transform(X_test)
@@ -270,6 +339,7 @@ if __name__ == "__main__":
 		y_train_predict = clf.predict(X_scaled)
 
 	if standerlization == 2:
+		print("Usinge the MinMaxScaler")
 		min_max_scaler = preprocessing.MinMaxScaler()
 		X_scaled = min_max_scaler.fit_transform(X_train)
 		X_test_scaled = min_max_scaler.transform(X_test)
@@ -278,6 +348,7 @@ if __name__ == "__main__":
 		y_test_predict = clf.predict(X_test_scaled)
 		y_train_predict = clf.predict(X_scaled)
 	else:
+		print("Usinge the None")
 		clf.fit(X_train, y_train)
 		# clf.score(X_train, y_train)
 		# clf.score(X_test, y_test)
@@ -292,8 +363,64 @@ if __name__ == "__main__":
 	print "classification report of TEST data:"
 	print(classification_report(y_test, y_test_predict))
 
+	# Quick way
+	q = wrapper_find_ranking_quick(X_test, clf)
+	dic_rank_results_test_new = q.get()
+
+	rank_results_test = [dic_rank_results_test_new[k] for k in sorted(dic_rank_results_test_new)]
+
+	print(pd.Series(rank_results_test).describe())
+	print("TOP1", (pd.Series(rank_results_test) <= 1).sum())
+	print("TOP5", (pd.Series(rank_results_test) <= 5).sum())
+	print("TOP10", (pd.Series(rank_results_test) <= 10).sum())
+
+	# ---- Independent test data ---- #
+	print("Using the new test data to evaluate.......")
+	df_pairs_evaluate = df_pairs.iloc[50000:55000:5]
+
+	texts_en_new = [doc.split() for doc in list(df_pairs_evaluate["en_article"])]
+	corpus_en_new = [dictionary_en.doc2bow(text) for text in texts_en_new]
+
+	texts_jp_new = [doc.split() for doc in list(df_pairs_evaluate["jp_article"])]
+	corpus_jp_new = [dictionary_jp.doc2bow(text) for text in texts_jp_new]
+
+	features_en_new = doc2feature(corpus_en_new[:1000], tfidf_en, dictionary_en, model_en)
+	features_jp_new = doc2feature(corpus_jp_new[:1000], tfidf_jp, dictionary_jp, model_jp)
+
+	features_merge_1_new = np.concatenate((features_en_new, features_jp_new), axis=1)
+
+	# X_test_scaled_new = scaler.transform(features_merge_new)
+	X_test_scaled_1_new = features_merge_1_new
+
+	# sim_results_test, rank_results_test = find_ranking(X_test[:1000,:200] ,X_test[:1000,200:], clf)
+	q = wrapper_find_ranking_quick(X_test_scaled_1_new, clf)
+	dic_rank_results_test_new = q.get()
+
+	rank_results_test_new = [dic_rank_results_test_new[k] for k in sorted(dic_rank_results_test_new)]
+
+	print(pd.Series(rank_results_test_new).describe())
+	print("TOP1", (pd.Series(rank_results_test_new) <= 1).sum())
+	print("TOP5", (pd.Series(rank_results_test_new) <= 5).sum())
+	print("TOP10", (pd.Series(rank_results_test_new) <= 10).sum())
 
 
+
+	# --- Expanding the training data (dissimilar paris)
+	features_en_wrong_new = np.array(features_en_new)
+	np.random.shuffle((features_en_wrong_new))
+	c = np.all(features_en_wrong_new == features_en_new, axis=1)
+	print "C value =", c.sum() # check the duplicated amount
+
+	features_merge_wrong_new = np.concatenate((features_en_wrong_new,features_jp_new), axis = 1)
+
+	# --- Prepare the final training and test data --- #
+	X_test_scaled_new = np.concatenate((features_merge_1_new, features_merge_wrong_new), axis = 0)
+
+	y_test_predict_new = clf.predict(X_test_scaled_new)
+	print "classification report of TEST data:"
+	print(classification_report(y_test, y_test_predict_new))
+
+"""
 
 	# --- Prepare for a new independent evaluation balanced data --- #
 
@@ -334,3 +461,6 @@ if __name__ == "__main__":
 
 
 	print pd.Series(rank_results_test).describe()
+
+"""
+

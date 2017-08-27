@@ -5,6 +5,9 @@ created on 2017/06/02
 @author: liuenda
 """
 
+# 这个是最初的使用keras来尝试lstm模型的脚本，用的是长文章，并且非常的古老
+# 【弃用！】
+
 import numpy as np
 import pandas as pd
 

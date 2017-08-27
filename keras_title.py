@@ -1,5 +1,5 @@
 # coding: utf-8
-
+from __future__ import print_function
 """
 created on 2017/07/06
 @author: liuenda
@@ -21,8 +21,9 @@ import random
 import pickle
 import time
 from keras.preprocessing import sequence
-from keras.layers import Input, Embedding, LSTM, Dense, Dropout
+from keras.layers import Input, Embedding, LSTM, Dense, Dropout, Bidirectional
 from keras.models import Model
+# from copy import deepcopy
 
 base_path = "/home/M2015eliu/cas/2017.1.1~LiuSTM/"
 model_name_en = base_path + "data/model-en/W2Vmodle.bin"
@@ -32,22 +33,29 @@ model_en = word2vec.Word2Vec.load(model_name_en)
 model_jp = word2vec.Word2Vec.load(model_name_jp)
 
 
-maxlen = 20 # Default: 0 -> infinite
+maxlen = 30 # Default: 0 -> infinite
 epoch = 10
 dim_lstm = 200
-dim_1 = 400
-dim_2 = 100
+dim_1 = 800
+# dim_2 = 100
+# dim_3 = 50
 dropout_rate = 0.0
-bias_y = -1
+bias_y = 0
 loss_function = "mse"
-mode = "reg"
-print "maxlen", maxlen, "epoch", epoch, "dim_lstm", dim_lstm,"dim_Dense", dim_1, dim_2
-print "dropout_rate", dropout_rate
-p_activation = ["relu", "relu"]
-print "Activation function:", p_activation
-print "bias of y:", bias_y
-print "loss_function:", loss_function
-print "------------------------------"
+mode = "reg" # reg, binary
+rnn_type = "bi-lstm" # lstm, bi-lstm
+bi_lstm_mode = "sum" #concat, sum
+print("maxlen", maxlen, "epoch", epoch, "dim_lstm", dim_lstm)
+print("dim_Dense", dim_1)
+print("dropout_rate", dropout_rate, ", LSTM type:", rnn_type, bi_lstm_mode)
+p_activation = ["relu", "relu", "relu"]
+print("Activation function:", p_activation)
+print("bias of y:", bias_y)
+print("loss_function:", loss_function)
+start = 0
+step = 10
+print("start:", start, "end:", )
+print("------------------------------")
 random.seed(1234)
 
 " Padding the sequence"
@@ -80,8 +88,8 @@ def find_ranking_batch(projection1, projection2, dlmodel, batch=10):
 
         proj1_tile = np.repeat(proj1, sample_length, axis=0)
         proj2_tile = np.tile(projection2, (batch,1,1))
-        print proj1_tile.shape
-        print proj2_tile.shape
+        print(proj1_tile.shape)
+        print(proj2_tile.shape)
 
         # For each batch, we should tile each of the element
         sim = dlmodel.predict([proj1_tile, proj2_tile])[:,0]
@@ -110,8 +118,13 @@ def find_ranking_quick(projection1, projection2, dlmodel):
     input_2 = Input(shape=(maxlen,200), dtype='float32', name='main_input_2')
 
     # LSTM layer
-    lstm_out_1 = LSTM(dim_lstm, go_backwards = True)(input_1)
-    lstm_out_2 = LSTM(dim_lstm, go_backwards = True)(input_2)
+    if rnn_type == "lstm":
+        lstm_out_1 = LSTM(dim_lstm, go_backwards = True)(input_1)
+        lstm_out_2 = LSTM(dim_lstm, go_backwards = True)(input_2)
+    elif rnn_type == "bi-lstm":
+        lstm_out_1 = Bidirectional(LSTM(dim_lstm, go_backwards = True), merge_mode=bi_lstm_mode)(input_1)
+        lstm_out_2 = Bidirectional(LSTM(dim_lstm, go_backwards = True), merge_mode=bi_lstm_mode)(input_2)
+
 
     # Model definition
     model_1 = Model(input=[input_1, input_2], output=[lstm_out_1, lstm_out_2])
@@ -136,8 +149,14 @@ def find_ranking_quick(projection1, projection2, dlmodel):
     # ---- Prepare the model_2 ----
 
     # Input layer
-    input_1 = Input(shape=(dim_lstm,), dtype='float32', name='lstm1')
-    input_2 = Input(shape=(dim_lstm,), dtype='float32', name='lsmt2')
+    if rnn_type == "lstm":
+        co = 1
+    elif rnn_type == "bi-lstm":
+        co = 2
+    if bi_lstm_mode == "sum" or bi_lstm_mode == "mul":
+        co = 1
+    input_1 = Input(shape=(dim_lstm*co,), dtype='float32', name='lstm1')
+    input_2 = Input(shape=(dim_lstm*co,), dtype='float32', name='lsmt2')
 
     # Merge layer
     merged_vector = keras.layers.concatenate([input_1, input_2], axis=-1)
@@ -146,8 +165,11 @@ def find_ranking_quick(projection1, projection2, dlmodel):
     x1 = Dense(dim_1, activation=p_activation[0])(merged_vector)
     x1 = Dropout(dropout_rate)(x1)
 
-    x1 = Dense(dim_2, activation=p_activation[1])(x1)
-    x1 = Dropout(dropout_rate)(x1)
+    # x1 = Dense(dim_2, activation=p_activation[1])(x1)
+    # x1 = Dropout(dropout_rate)(x1)
+    #
+    # x1 = Dense(dim_3, activation=p_activation[2])(x1)
+    # x1 = Dropout(dropout_rate)(x1)
 
     # main_output = Dense(1, activation='sigmoid', name='main_output')(x1)
     if mode == "reg":
@@ -174,7 +196,9 @@ def find_ranking_quick(projection1, projection2, dlmodel):
     # Set the weights
     model_2.layers[3].set_weights(dlmodel.layers[5].get_weights())
     model_2.layers[5].set_weights(dlmodel.layers[7].get_weights())
-    model_2.layers[7].set_weights(dlmodel.layers[9].get_weights())
+    # model_2.layers[7].set_weights(dlmodel.layers[9].get_weights())
+    #
+    # model_2.layers[9].set_weights(dlmodel.layers[11].get_weights())
 
     projection1 = v1
     projection2 = v2
@@ -293,7 +317,7 @@ def doc2vec_jp(doc):
 
 
 # def prepare_train(dir_en, dir_jp):
-def prepare_train(dir_en_jp, start=0, end=5000):
+def prepare_train(dir_en_jp, start=None, end=None):
 
     # df_en_mapping = pd.read_csv(dir_en)
     # df_jp_mapping = pd.read_csv(dir_jp)
@@ -363,7 +387,9 @@ if __name__ == "__main__":
         dir_en_jp = base_path + "data_preparation/2014_cleaned_jp_en.csv"
 
         # pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en, dir_jp)
-        pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en_jp)
+        # pairs_correct, pairs_wrong, df_pairs = prepare_train(dir_en_jp)
+        _1, _2, df_pairs = prepare_train(dir_en_jp)
+        # 这里的 pairs_wrong 和 pairs_correct 都 不使用！
         # train_1 = pairs_correct[0:2000] + pairs_correct[3000:5000]
         # test_1 = pairs_correct[2000:3000]
 
@@ -374,6 +400,19 @@ if __name__ == "__main__":
     # Expand the training data
     # train = train_1 + train_2
 
+    # ------- Independent data sets -------
+    print("Using the new test data to evaluate.......")
+    df_pairs_evaluate = df_pairs.iloc[50000:55000:5]
+
+    df_pairs_evaluate['word2vec_en'] = df_pairs_evaluate['en_article'].apply(doc2vec_en)
+    df_pairs_evaluate['word2vec_jp'] = df_pairs_evaluate['jp_article'].apply(doc2vec_jp)
+
+
+    df_pairs_evaluate['padding_en'] = df_pairs_evaluate['word2vec_en'].apply(padding)
+    df_pairs_evaluate['padding_jp'] = df_pairs_evaluate['word2vec_jp'].apply(padding)
+
+    features_en_new = np.stack(df_pairs_evaluate["padding_en"].values)
+    features_jp_new = np.stack(df_pairs_evaluate["padding_jp"].values)
 
     # --- Apply the word2vec model to the data sets --- #
 
@@ -400,7 +439,7 @@ if __name__ == "__main__":
 
     # check the duplicated amount
     c = np.all(features_en_1 == features_en_0, axis=(1,2))
-    print "C value =", c.sum(), "position:", np.where(c== True)[0].tolist()
+    print("C value =", c.sum(), "position:", np.where(c== True)[0].tolist())
 
     # Prepare the final training and test data
     X_1 = np.concatenate((features_en_1, features_en_0), axis = 0)
@@ -433,6 +472,27 @@ if __name__ == "__main__":
         y_test = np.concatenate((np.ones(len(X1_test_1)), np.zeros(len(X1_test_0))), axis = 0)
 
 
+    # --- Generate balanced test data 2 --- #
+
+    # Generate training data (similarity = 0)
+    features_en_0_new = np.array(features_en_new)
+    np.random.shuffle((features_en_0_new))
+
+    # check the duplicated amount
+    c = np.all(features_en_new == features_en_0_new, axis=(1,2))
+    print("C value =", c.sum(), "position:", np.where(c== True)[0].tolist())
+
+    # Prepare the final training and test data
+    X1_test_new = np.concatenate((features_en_new, features_en_0_new), axis = 0)
+    X2_test_new = np.concatenate((features_jp_new, features_jp_new), axis = 0)
+
+    if mode == "reg":
+        y_test_new = np.concatenate((np.ones(len(features_en_new)), np.zeros(len(features_en_0_new))+bias_y), axis = 0)
+        # y_test = np.concatenate((np.ones(len(X1_test_1)), np.zeros(len(X1_test_0))), axis = 0)
+    else:
+        y_test_new = np.concatenate((np.ones(len(features_en_new)), np.zeros(len(features_en_0_new))), axis = 0)
+
+
     # ---- Parallel Model ---- #
 
     # Input layer
@@ -442,8 +502,12 @@ if __name__ == "__main__":
     # LSTM layer
     # lstm_out_1 = LSTM(50)(input_1)
     # lstm_out_2 = LSTM(50)(input_2)
-    lstm_out_1 = LSTM(dim_lstm, go_backwards = True)(input_1)
-    lstm_out_2 = LSTM(dim_lstm, go_backwards = True)(input_2)
+    if rnn_type == "lstm":
+        lstm_out_1 = LSTM(dim_lstm, go_backwards = True)(input_1)
+        lstm_out_2 = LSTM(dim_lstm, go_backwards = True)(input_2)
+    elif rnn_type == "bi-lstm":
+        lstm_out_1 = Bidirectional(LSTM(dim_lstm, go_backwards = True), merge_mode=bi_lstm_mode)(input_1)
+        lstm_out_2 = Bidirectional(LSTM(dim_lstm, go_backwards = True), merge_mode=bi_lstm_mode)(input_2)
 
     # Merge layer
     merged_vector = keras.layers.concatenate([lstm_out_1, lstm_out_2], axis=-1)
@@ -452,11 +516,11 @@ if __name__ == "__main__":
     x1 = Dense(dim_1, activation=p_activation[0])(merged_vector)
     x1 = Dropout(dropout_rate)(x1)
 
-    # x1 = Dense(100, activation='relu')(x1)
-    # x1 = Dropout(0.5)(x1)
-
-    x1 = Dense(dim_2, activation=p_activation[1])(x1)
-    x1 = Dropout(dropout_rate)(x1)
+    # x1 = Dense(dim_2, activation=p_activation[1])(x1)
+    # x1 = Dropout(dropout_rate)(x1)
+    #
+    # x1 = Dense(dim_3, activation=p_activation[2])(x1)
+    # x1 = Dropout(dropout_rate)(x1)
 
     if mode == "reg":
         main_output = Dense(1, name='main_output')(x1)
@@ -473,7 +537,15 @@ if __name__ == "__main__":
     # model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
     # Show the structure of the model
-    print model_lstm2.summary()
+    print(model_lstm2.summary())
+
+    saved_model = []
+    tops = {}
+    tops_test = {}
+    # Initialize the top saver
+    for i in [1,5,10]:
+        tops[i] = []
+        tops_test[i] = []
 
     # Fit the training model
     for i in range(epoch):
@@ -483,14 +555,29 @@ if __name__ == "__main__":
                            batch_size=32,
                            initial_epoch=i)
 
+        # Evaluation on test data 1
         sim_results_test, rank_results_test = find_ranking_quick(X1_test_1,
                                                                  X2_test_1,
                                                                  model_lstm2)
 
+        # Evaluation on test data 2
+        sim_results_test2, rank_results_test2 = find_ranking_quick(features_en_new,
+                                                             features_jp_new,
+                                                             model_lstm2)
+
+        # Save the mdoel
+        saved_model.append(model_lstm2.get_weights())
+
         # Evaluation
-        print "TOP1", (pd.Series(rank_results_test) <= 1).sum()
-        print "TOP5", (pd.Series(rank_results_test) <= 5).sum()
-        print "TOP10", (pd.Series(rank_results_test) <= 10).sum()
+
+        for i in [1,5,10]:
+            top = (pd.Series(rank_results_test) <= i).sum()
+            tops[i].append(top)
+            print("TOP", i, top)
+
+            top_test = (pd.Series(rank_results_test2) <= i).sum()
+            tops_test[i].append(top_test)
+            print("[T] TOP", i, top_test)
 
     # # Save the history and the model
     # code = "b"
@@ -506,10 +593,10 @@ if __name__ == "__main__":
 
     # --- find ranking --- #
     # sim_results_test_slow, rank_results_test_slow = find_ranking(X1_test_1, X2_test_1, model_lstm2)
-    sim_results_test, rank_results_test = find_ranking_quick(X1_test_1, X2_test_1, model_lstm2)
-    print "TOP1", (pd.Series(rank_results_test) <= 1).sum()
-    print "TOP5", (pd.Series(rank_results_test) <= 5).sum()
-    print "TOP10", (pd.Series(rank_results_test) <= 10).sum()
+    # sim_results_test, rank_results_test = find_ranking_quick(X1_test_1, X2_test_1, model_lstm2)
+    # print("TOP1", (pd.Series(rank_results_test) <= 1).sum())
+    # print("TOP5", (pd.Series(rank_results_test) <= 5).sum())
+    # print("TOP10", (pd.Series(rank_results_test) <= 10).sum())
 
     # # --- Prepare for a new independent evaluation balanced data --- #
     #
@@ -550,6 +637,7 @@ if __name__ == "__main__":
     #
     #
     # print(pd.Series(rank_results_test).describe())
+
 
 
 

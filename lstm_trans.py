@@ -17,7 +17,7 @@ from sentences_trans import embed_w2v as embed
 import pandas as pd
 # from sentences import expand as expand # Useless in the later tasks
 
-data_path = "./data/"
+# data_path = "./data/"
 # test = pickle.load(open(data_path + "semtest.p",'rb')) # add by liuenda
 
 options = locals().copy()
